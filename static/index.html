@@ -10,7 +10,7 @@
     <link href="https://fonts.cdnfonts.com/css/tt-norms-pro" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.7">
+    <link rel="stylesheet" href="style.css?v=1.8">
 </head>
 
 <body>
@@ -104,7 +104,8 @@
                     <div class="input-group">
                         <label for="excel-upload" class="label">Upload Excel File (.xlsx)</label>
                         <div class="file-drop-area" id="drop-area">
-                            <input type="file" id="excel-upload" accept=".xlsx, .xls" hidden>
+                            <button class="btn-clear hidden" id="clear-ratio" title="Remove file">&times;</button>
+                            <input type="file" id="file-input" accept=".xlsx, .xls" hidden>
                             <div class="upload-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
@@ -175,6 +176,7 @@
                     <div class="input-group">
                         <label class="label">Upload Folder 1 (1x1 images)</label>
                         <div class="file-drop-area folder-drop" id="drop-area-1x1">
+                            <button class="btn-clear hidden" id="clear-1x1" title="Clear folder">&times;</button>
                             <input type="file" id="folder-1x1" webkitdirectory directory multiple hidden>
                             <div class="upload-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
@@ -191,6 +193,7 @@
                     <div class="input-group">
                         <label class="label">Upload Folder 2 (3x4 images)</label>
                         <div class="file-drop-area folder-drop" id="drop-area-3x4">
+                            <button class="btn-clear hidden" id="clear-3x4" title="Clear folder">&times;</button>
                             <input type="file" id="folder-3x4" webkitdirectory directory multiple hidden>
                             <div class="upload-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
@@ -236,7 +239,7 @@
         </footer>
     </main>
 
-    <script src="script.js?v=1.6"></script>
+    <script src="script.js?v=1.8"></script>
 </body>
 
 </html>

@@ -145,6 +145,7 @@ const errorList = document.getElementById('error-list');
 const errorCount = document.getElementById('error-count');
 const downloadSection = document.getElementById('download-section');
 const downloadBtn = document.getElementById('download-btn');
+const clearRatioBtn = document.getElementById('clear-ratio');
 
 let selectedFile = null;
 let pollInterval = null;
@@ -166,8 +167,18 @@ function handleFiles(files) {
         selectedFile = files[0];
         fileName.textContent = selectedFile.name;
         processBtn.disabled = false;
+        clearRatioBtn.classList.remove('hidden');
     }
 }
+
+clearRatioBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectedFile = null;
+    fileName.textContent = 'No file selected';
+    fileInput.value = '';
+    processBtn.disabled = true;
+    clearRatioBtn.classList.add('hidden');
+});
 
 processBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
@@ -215,6 +226,8 @@ const pvidErrorList = document.getElementById('pvid-error-list');
 const pvidErrorCount = document.getElementById('pvid-error-count');
 const pvidDownloadSection = document.getElementById('pvid-download-section');
 const pvidDownloadBtn = document.getElementById('pvid-download-btn');
+const clear1x1Btn = document.getElementById('clear-1x1');
+const clear3x4Btn = document.getElementById('clear-3x4');
 
 let files1x1 = [];
 let files3x4 = [];
@@ -224,13 +237,37 @@ dropArea3x4.addEventListener('click', () => input3x4.click());
 
 input1x1.addEventListener('change', (e) => {
     files1x1 = Array.from(e.target.files);
-    name1x1.textContent = `${files1x1.length} files selected`;
+    if (files1x1.length > 0) {
+        name1x1.textContent = `${files1x1.length} files selected`;
+        clear1x1Btn.classList.remove('hidden');
+    }
     checkPvidReady();
 });
 
 input3x4.addEventListener('change', (e) => {
     files3x4 = Array.from(e.target.files);
-    name3x4.textContent = `${files3x4.length} files selected`;
+    if (files3x4.length > 0) {
+        name3x4.textContent = `${files3x4.length} files selected`;
+        clear3x4Btn.classList.remove('hidden');
+    }
+    checkPvidReady();
+});
+
+clear1x1Btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    files1x1 = [];
+    name1x1.textContent = 'No folder selected';
+    input1x1.value = '';
+    clear1x1Btn.classList.add('hidden');
+    checkPvidReady();
+});
+
+clear3x4Btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    files3x4 = [];
+    name3x4.textContent = 'No folder selected';
+    input3x4.value = '';
+    clear3x4Btn.classList.add('hidden');
     checkPvidReady();
 });
 
@@ -254,9 +291,11 @@ function checkPvidReady() {
                 if (area === dropArea1x1) {
                     files1x1 = droppedFiles;
                     name1x1.textContent = `${files1x1.length} files selected`;
+                    if (files1x1.length > 0) clear1x1Btn.classList.remove('hidden');
                 } else {
                     files3x4 = droppedFiles;
                     name3x4.textContent = `${files3x4.length} files selected`;
+                    if (files3x4.length > 0) clear3x4Btn.classList.remove('hidden');
                 }
                 checkPvidReady();
             }
