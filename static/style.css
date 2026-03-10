@@ -24,9 +24,11 @@ body {
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    align-items: center;
+    /* Center vertically */
     overflow-x: hidden;
-    padding-top: 4rem;
+    padding: 2rem 0;
+    /* Add vertical padding instead of top padding */
     letter-spacing: 0.02em;
 }
 

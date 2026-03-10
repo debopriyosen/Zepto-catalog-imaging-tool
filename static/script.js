@@ -42,10 +42,14 @@ function switchView(viewName) {
     views[viewName].classList.remove('hidden');
 
     const logoutBtn = document.getElementById('logout-btn');
+    const header = document.querySelector('.header');
+
     if (viewName === 'login') {
         logoutBtn.classList.add('hidden');
+        header.classList.add('hidden');
     } else {
         logoutBtn.classList.remove('hidden');
+        header.classList.remove('hidden');
     }
 
     if (viewName === 'home') {
