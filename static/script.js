@@ -391,29 +391,59 @@ function traverseFileTree(item) {
 }
 
 runGroupingBtn.addEventListener('click', async () => {
-    const formData = new FormData();
-    files1x1.forEach(f => formData.append('folder1x1', f));
-    files3x4.forEach(f => formData.append('folder3x4', f));
-
     runGroupingBtn.disabled = true;
     pvidStatusContainer.classList.remove('hidden');
     pvidErrorLog.classList.add('hidden');
     pvidDownloadSection.classList.add('hidden');
     pvidProgressFill.style.width = '0%';
     pvidProgressPercent.textContent = '0%';
-    pvidProgressText.textContent = 'Uploading folders...';
+    pvidProgressText.textContent = 'Initializing task...';
 
     try {
-        const response = await fetch('/upload-pvid', {
-            method: 'POST',
-            body: formData
-        });
-        if (!response.ok) throw new Error('PVID Upload failed');
-        const data = await response.json();
-        startPolling(data.task_id, 'pvid');
+        // 1. Initialize Task
+        const initRes = await fetch('/pvid/init', { method: 'POST' });
+        if (!initRes.ok) throw new Error('Failed to initialize PVID task');
+        const { task_id } = await initRes.json();
+
+        const totalFiles = files1x1.length + files3x4.length;
+        let uploadedCount = 0;
+
+        // 2. Upload Files Sequentially
+        const uploadFolder = async (files, folderName) => {
+            for (const file of files) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const uploadRes = await fetch(`/pvid/upload-file?task_id=${task_id}&folder=${folderName}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadRes.ok) throw new Error(`Failed to upload ${file.name}`);
+
+                uploadedCount++;
+                const uploadProgress = Math.round((uploadedCount / totalFiles) * 100);
+                pvidProgressFill.style.width = `${uploadProgress}%`;
+                pvidProgressPercent.textContent = `${uploadProgress}%`;
+                pvidProgressText.textContent = `Uploading files (${uploadedCount}/${totalFiles})...`;
+            }
+        };
+
+        if (files1x1.length > 0) await uploadFolder(files1x1, '1x1');
+        if (files3x4.length > 0) await uploadFolder(files3x4, '3x4');
+
+        // 3. Trigger Process
+        pvidProgressText.textContent = 'Starting processing...';
+        const startRes = await fetch(`/pvid/process?task_id=${task_id}`, { method: 'POST' });
+        if (!startRes.ok) throw new Error('Failed to start PVID processing');
+
+        // 4. Start Polling
+        startPolling(task_id, 'pvid');
+
     } catch (error) {
         alert('Error: ' + error.message);
         runGroupingBtn.disabled = false;
+        pvidProgressText.textContent = 'Failed';
     }
 });
 

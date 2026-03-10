@@ -140,15 +140,67 @@ async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: Uploa
     
     return {"task_id": task_id}
 
+@app.post("/pvid/init")
+async def pvid_init(email: str = Depends(get_current_user)):
+    task_id = str(uuid.uuid4())
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    os.makedirs(os.path.join(task_upload_dir, "1x1"), exist_ok=True)
+    os.makedirs(os.path.join(task_upload_dir, "3x4"), exist_ok=True)
+    
+    tasks_status[task_id] = {"status": "uploading", "progress": 0, "errors": [], "zip_url": None}
+    save_status()
+    return {"task_id": task_id}
+
+@app.post("/pvid/upload-file")
+async def pvid_upload_single(
+    task_id: str,
+    folder: str,
+    file: UploadFile = File(...),
+    email: str = Depends(get_current_user)
+):
+    if folder not in ["1x1", "3x4"]:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    target_dir = os.path.join(task_upload_dir, folder)
+    
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+    
+    safe_name = os.path.basename(file.filename)
+    if safe_name:
+        with open(os.path.join(target_dir, safe_name), "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+    return {"status": "success"}
+
+@app.post("/pvid/process")
+async def pvid_process_trigger(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    email: str = Depends(get_current_user)
+):
+    if task_id not in tasks_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    dir1x1 = os.path.join(task_upload_dir, "1x1")
+    dir3x4 = os.path.join(task_upload_dir, "3x4")
+    
+    tasks_status[task_id]["status"] = "processing"
+    save_status()
+    
+    background_tasks.add_task(processor.process_pvid_grouping, task_id, dir1x1, dir3x4, tasks_status)
+    return {"status": "started"}
+
 @app.post("/upload-pvid")
-async def upload_pvid(
+async def upload_pvid_legacy(
     background_tasks: BackgroundTasks, 
     folder1x1: Optional[List[UploadFile]] = File(None), 
     folder3x4: Optional[List[UploadFile]] = File(None),
     email: str = Depends(get_current_user)
 ):
-    print(f"Received PVID upload: {len(folder1x1) if folder1x1 else 0} files (1x1), {len(folder3x4) if folder3x4 else 0} files (3x4)")
-    
+    # This remains for single-batch small uploads (Legacy)
     task_id = str(uuid.uuid4())
     task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
     dir1x1 = os.path.join(task_upload_dir, "1x1")
@@ -157,7 +209,6 @@ async def upload_pvid(
     os.makedirs(dir1x1, exist_ok=True)
     os.makedirs(dir3x4, exist_ok=True)
     
-    # Save 1x1 files
     if folder1x1:
         for file in folder1x1:
             safe_name = os.path.basename(file.filename)
@@ -165,7 +216,6 @@ async def upload_pvid(
                 with open(os.path.join(dir1x1, safe_name), "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
             
-    # Save 3x4 files
     if folder3x4:
         for file in folder3x4:
             safe_name = os.path.basename(file.filename)
@@ -177,7 +227,6 @@ async def upload_pvid(
     save_status()
     
     background_tasks.add_task(processor.process_pvid_grouping, task_id, dir1x1, dir3x4, tasks_status)
-    
     return {"task_id": task_id}
 
 @app.get("/status/{task_id}")

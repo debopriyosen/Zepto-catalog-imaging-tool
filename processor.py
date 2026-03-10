@@ -9,6 +9,10 @@ import json
 import re
 from typing import Dict, List, Set, Optional, Tuple
 from datetime import datetime
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
 
 UUID_RE = re.compile(r"^(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_(?P<label>.+)$")
 
@@ -104,7 +108,9 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         if excel_path.endswith('.csv'):
             df = pd.read_csv(excel_path)
         else:
-            df = pd.read_excel(excel_path)
+            if openpyxl is None:
+                raise ImportError("The 'openpyxl' package is required to read Excel files. Please ensure it is installed.")
+            df = pd.read_excel(excel_path, engine='openpyxl')
             
         total_rows = len(df)
         
@@ -126,8 +132,9 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         conversion_results = [] # List of dicts for the full log
         
         target_ratio = get_target_ratio(ratio)
-        task_dir = os.path.join(PROCESSED_DIR, task_id)
-        os.makedirs(task_dir, exist_ok=True)
+        
+        # We will create the ZIP directly as we process to save disk space
+        zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
         
         # Find PVID column (case-insensitive, space-insensitive)
         pvid_col = col_map.get("pvid")
@@ -139,106 +146,68 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         pvid_to_part = {}
         unique_pvids_seen = []
         
-        for index, row in df.iterrows():
-            pvid = str(row.get(pvid_col, f"unknown_{index}")) if pvid_col else f"unknown_{index}"
-            
-            # Determine or assign part folder
-            if pvid not in pvid_to_part:
-                unique_pvids_seen.append(pvid)
-                part_num = (len(unique_pvids_seen) - 1) // 100 + 1
-                pvid_to_part[pvid] = f"part{part_num}"
-            
-            part_folder = pvid_to_part[pvid]
-            part_dir = os.path.join(task_dir, part_folder)
-            os.makedirs(part_dir, exist_ok=True)
-            
-            for num, suffix in NAMING_CONVENTION.items():
-                # Support: Image1, image_link1, image1, Image_link1, imagelink1 etc.
-                possible_keys = [f"image{num}", f"image_link{num}", f"imagelink{num}"]
-                
-                actual_col = None
-                for p_key in possible_keys:
-                    # Also normalize the search keys
-                    norm_p_key = p_key.lower().replace(" ", "").replace("_", "").replace(".", "")
-                    if norm_p_key in col_map:
-                        actual_col = col_map[norm_p_key]
-                        break
-                
-                if not actual_col:
-                    continue
-                    
-                url = row.get(actual_col)
-                if pd.isna(url) or not str(url).strip().startswith("http"):
-                    if not pd.isna(url) and str(url).strip():
-                        print(f"Skipping value in {actual_col}: '{url}' (not a valid HTTP URL)")
-                    continue
-                
-                url = str(url).strip()
-                try:
-                    response = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                    response.raise_for_status()
-                    
-                    img = Image.open(BytesIO(response.content))
-                    processed_img = resize_with_padding(img, target_ratio)
-                    
-                    filename = f"{pvid}{suffix}"
-                    save_path = os.path.join(part_dir, filename)
-                    processed_img.save(save_path, "JPEG", quality=95)
-                    total_images_processed += 1
-                    
-                    # Track Success
-                    conversion_results.append({
-                        "PVID": pvid,
-                        "ImageSlot": num,
-                        "URL": url,
-                        "Status": "Success",
-                        "Error": ""
-                    })
-                    
-                except Exception as e:
-                    error_msg = f"Row {index+1}, Image {num}: Error processing {url} - {str(e)}"
-                    print(error_msg)
-                    errors.append(error_msg)
-                    
-                    # Track Failure
-                    conversion_results.append({
-                        "PVID": pvid,
-                        "ImageSlot": num,
-                        "URL": url,
-                        "Status": "Failed",
-                        "Error": str(e)
-                    })
-            
-            processed_count += 1
-            progress = int((processed_count / total_rows) * 100)
-            tasks_status[task_id]["progress"] = progress
-            tasks_status[task_id]["errors"] = errors
-            
-            # Save status to disk via a simple side effect (main.py's global)
-            try:
-                with open(STATUS_FILE, "w") as f:
-                    json.dump(tasks_status, f)
-            except:
-                pass
-        
-        # Create Full Conversion Log CSV
-        if conversion_results:
-            log_df = pd.DataFrame(conversion_results)
-            log_path = os.path.join(task_dir, "conversion_log.csv")
-            log_df.to_csv(log_path, index=False)
-            print(f"Created conversion_log.csv with {len(conversion_results)} entries.")
-            
-        if total_images_processed == 0:
-            tasks_status[task_id]["errors"].insert(0, "No valid images were found in the uploaded file. Please check column names (PVID, Image1, etc.) and URLs.")
-        
-        # Create ZIP
-        zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(task_dir):
-                for file in files:
-                    abs_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(abs_path, task_dir)
-                    zipf.write(abs_path, rel_path)
+            for index, row in df.iterrows():
+                pvid = str(row.get(pvid_col, f"unknown_{index}")) if pvid_col else f"unknown_{index}"
+                
+                # Determine or assign part folder
+                if pvid not in pvid_to_part:
+                    unique_pvids_seen.append(pvid)
+                    part_num = (len(unique_pvids_seen) - 1) // 100 + 1
+                    pvid_to_part[pvid] = f"part{part_num}"
+                
+                part_folder = pvid_to_part[pvid]
+                
+                for num, suffix in NAMING_CONVENTION.items():
+                    # ... (rest of image processing logic)
+                    possible_keys = [f"image{num}", f"image_link{num}", f"imagelink{num}"]
+                    actual_col = None
+                    for p_key in possible_keys:
+                        norm_p_key = p_key.lower().replace(" ", "").replace("_", "").replace(".", "")
+                        if norm_p_key in col_map:
+                            actual_col = col_map[norm_p_key]
+                            break
+                    
+                    if not actual_col: continue
+                    url = row.get(actual_col)
+                    if pd.isna(url) or not str(url).strip().startswith("http"): continue
+                    
+                    url = str(url).strip()
+                    try:
+                        response = requests.get(url, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+                        response.raise_for_status()
+                        
+                        img = Image.open(BytesIO(response.content))
+                        processed_img = resize_with_padding(img, target_ratio)
+                        
+                        # Save to memory buffer instead of disk
+                        img_io = BytesIO()
+                        processed_img.save(img_io, "JPEG", quality=95)
+                        img_io.seek(0)
+                        
+                        filename = f"{part_folder}/{pvid}{suffix}"
+                        zipf.writestr(filename, img_io.getvalue())
+                        total_images_processed += 1
+                        
+                        conversion_results.append({
+                            "PVID": pvid, "ImageSlot": num, "URL": url, "Status": "Success", "Error": ""
+                        })
+                    except Exception as e:
+                        conversion_results.append({
+                            "PVID": pvid, "ImageSlot": num, "URL": url, "Status": "Failed", "Error": str(e)
+                        })
+
+                processed_count += 1
+                progress = int((processed_count / total_rows) * 100)
+                tasks_status[task_id]["progress"] = progress
+                save_current_status(tasks_status)
+
+            # Add log to ZIP
+            if conversion_results:
+                log_df = pd.DataFrame(conversion_results)
+                log_io = BytesIO()
+                log_df.to_csv(log_io, index=False)
+                zipf.writestr("conversion_log.csv", log_io.getvalue())
         
         tasks_status[task_id]["status"] = "completed"
         tasks_status[task_id]["progress"] = 100
@@ -252,8 +221,8 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
             
         print(f"Task {task_id} completed. Processed {total_images_processed} images.")
         
-        # Cleanup processed folder
-        shutil.rmtree(task_dir)
+        # No need to cleanup task_dir as imgs were jamais on disk
+        pass
         
     except Exception as e:
         print(f"Critical error in task {task_id}: {str(e)}")
