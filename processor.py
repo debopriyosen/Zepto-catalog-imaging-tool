@@ -136,8 +136,21 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         else:
             print(f"Found PVID column: {pvid_col}")
         
+        pvid_to_part = {}
+        unique_pvids_seen = []
+        
         for index, row in df.iterrows():
             pvid = str(row.get(pvid_col, f"unknown_{index}")) if pvid_col else f"unknown_{index}"
+            
+            # Determine or assign part folder
+            if pvid not in pvid_to_part:
+                unique_pvids_seen.append(pvid)
+                part_num = (len(unique_pvids_seen) - 1) // 100 + 1
+                pvid_to_part[pvid] = f"part{part_num}"
+            
+            part_folder = pvid_to_part[pvid]
+            part_dir = os.path.join(task_dir, part_folder)
+            os.makedirs(part_dir, exist_ok=True)
             
             for num, suffix in NAMING_CONVENTION.items():
                 # Support: Image1, image_link1, image1, Image_link1, imagelink1 etc.
@@ -169,7 +182,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
                     processed_img = resize_with_padding(img, target_ratio)
                     
                     filename = f"{pvid}{suffix}"
-                    save_path = os.path.join(task_dir, filename)
+                    save_path = os.path.join(part_dir, filename)
                     processed_img.save(save_path, "JPEG", quality=95)
                     total_images_processed += 1
                     
@@ -223,7 +236,9 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(task_dir):
                 for file in files:
-                    zipf.write(os.path.join(root, file), file)
+                    abs_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(abs_path, task_dir)
+                    zipf.write(abs_path, rel_path)
         
         tasks_status[task_id]["status"] = "completed"
         tasks_status[task_id]["progress"] = 100
