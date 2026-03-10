@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="icon" type="image/png" href="favicon.png">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="style.css?v=2.1">
 </head>
 
@@ -47,19 +48,11 @@
                     <h2>Internal Access Only</h2>
                     <p class="text-muted">Please sign in to continue</p>
                 </div>
-                <form id="login-form" class="login-form">
-                    <div class="input-group">
-                        <label class="label">Email Address</label>
-                        <input type="email" id="login-email" class="text-input" placeholder="name@zeptonow.com"
-                            required>
-                    </div>
-                    <div class="input-group">
-                        <label class="label">Password</label>
-                        <input type="password" id="login-password" class="text-input" placeholder="••••••••" required>
-                    </div>
+                <div class="login-container">
+                    <div id="google-signin-button"></div>
                     <div id="login-error" class="error-text hidden">Access Denied – Unauthorized User</div>
-                    <button type="submit" class="btn btn-primary w-100">Sign In</button>
-                </form>
+                    <div id="general-error" class="error-text hidden">An error occurred during sign-in</div>
+                </div>
             </section>
         </div>
 

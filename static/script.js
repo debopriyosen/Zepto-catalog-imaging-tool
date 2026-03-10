@@ -14,28 +14,14 @@ document.getElementById('btn-goto-ratio').addEventListener('click', () => switch
 document.getElementById('btn-goto-pvid').addEventListener('click', () => switchView('pvid'));
 document.getElementById('back-to-home-ratio').addEventListener('click', () => switchView('home'));
 document.getElementById('back-to-home-pvid').addEventListener('click', () => switchView('home'));
-document.getElementById('logout-btn').addEventListener('click', handleLogout);
+document.getElementById('logout-btn').addEventListener('click', () => handleLogout());
 
-// Auth Configuration
-const ALLOWED_USERS = [
-    'debopriyo.sen@zeptonow.com',
-    'debopriyosensupu@gmail.com',
-    'rohit.ghosh@zeptonow.com',
-    'kishore.g@zeptonow.com',
-    'arun.m1@zeptonow.com',
-    'prasad.rao@zeptonow.com',
-    'k.harish@zeptonow.com'
-];
-const VALID_PASSWORD = 'catalog2026';
-
-function isAuthenticated() {
-    return localStorage.getItem('zepto-session') === 'active';
-}
-
-function switchView(viewName) {
-    if (viewName !== 'login' && !isAuthenticated()) {
-        switchView('login');
-        return;
+async function switchView(viewName) {
+    if (viewName !== 'login') {
+        const authenticated = await checkAuth();
+        if (!authenticated) {
+            viewName = 'login';
+        }
     }
 
     Object.keys(views).forEach(v => views[v].classList.add('hidden'));
@@ -47,6 +33,7 @@ function switchView(viewName) {
     if (viewName === 'login') {
         logoutBtn.classList.add('hidden');
         header.classList.add('hidden');
+        initGoogleSignIn();
     } else {
         logoutBtn.classList.remove('hidden');
         header.classList.remove('hidden');
@@ -65,33 +52,89 @@ function switchView(viewName) {
 }
 
 // --- AUTH LOGIC ---
-const loginForm = document.getElementById('login-form');
-const loginEmail = document.getElementById('login-email');
-const loginPassword = document.getElementById('login-password');
-const loginError = document.getElementById('login-error');
+let userEmail = null;
 
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const email = loginEmail.value.trim().toLowerCase();
-    const password = loginPassword.value;
-
-    if (ALLOWED_USERS.includes(email) && password === VALID_PASSWORD) {
-        localStorage.setItem('zepto-session', 'active');
-        loginError.classList.add('hidden');
-        switchView('home');
-    } else {
-        loginError.classList.remove('hidden');
+async function checkAuth() {
+    try {
+        const response = await fetch('/auth/user');
+        if (response.ok) {
+            const data = await response.json();
+            userEmail = data.email;
+            return true;
+        }
+    } catch (error) {
+        console.error("Auth check failed:", error);
     }
-});
+    return false;
+}
 
-function handleLogout() {
-    localStorage.removeItem('zepto-session');
+async function initGoogleSignIn() {
+    try {
+        const response = await fetch('/auth/config');
+        const config = await response.json();
+
+        if (!config.google_client_id) {
+            console.warn("GOOGLE_CLIENT_ID not found in backend config");
+            return;
+        }
+
+        google.accounts.id.initialize({
+            client_id: config.google_client_id,
+            callback: handleGoogleCredentialResponse,
+            auto_select: true
+        });
+
+        google.accounts.id.renderButton(
+            document.getElementById("google-signin-button"),
+            { theme: "outline", size: "large", width: 280, shape: "pill" }
+        );
+    } catch (error) {
+        console.error("Failed to initialize Google Sign-In:", error);
+    }
+}
+
+async function handleGoogleCredentialResponse(response) {
+    const loginError = document.getElementById('login-error');
+    const generalError = document.getElementById('general-error');
+
+    loginError.classList.add('hidden');
+    generalError.classList.add('hidden');
+
+    try {
+        const res = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: response.credential })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            userEmail = data.email;
+            switchView('home');
+        } else {
+            if (res.status === 403) {
+                loginError.classList.remove('hidden');
+            } else {
+                generalError.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        generalError.classList.remove('hidden');
+    }
+}
+
+async function handleLogout() {
+    try {
+        await fetch('/auth/logout', { method: 'POST' });
+    } catch (e) { }
+    userEmail = null;
     switchView('login');
 }
 
 // Initial session check
-window.addEventListener('DOMContentLoaded', () => {
-    if (isAuthenticated()) {
+window.addEventListener('DOMContentLoaded', async () => {
+    const authenticated = await checkAuth();
+    if (authenticated) {
         switchView('home');
     } else {
         switchView('login');

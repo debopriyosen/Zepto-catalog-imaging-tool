@@ -108,20 +108,21 @@ body {
     height: auto;
 }
 
-.login-form {
-    text-align: center;
+.login-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-}
-
-.login-form .input-group {
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 2rem;
     width: 100%;
 }
 
-.login-form .label {
-    text-align: center;
+#google-signin-button {
+    display: flex;
+    justify-content: center;
     width: 100%;
+    min-height: 48px;
 }
 
 .text-input {

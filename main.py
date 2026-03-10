@@ -2,14 +2,38 @@ import os
 import uuid
 import shutil
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
 import processor
 
 app = FastAPI(title="Catalog Image Processor")
+
+# JWT Settings
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "zepto-catalog-imaging-tool-secret-2026")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "") 
+
+# Session dependency
+async def get_current_user(request: Request):
+    token = request.cookies.get("session_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
 
 # Directories for processing
 # Vercel filesystem is read-only except for /tmp
@@ -44,11 +68,55 @@ def load_status():
 
 load_status()
 
+@app.post("/auth/login")
+async def login(response: Response, data: dict):
+    credential = data.get("credential")
+    if not credential:
+        raise HTTPException(status_code=400, detail="Missing credential")
+    
+    try:
+        # GOOGLE_CLIENT_ID must be set in env vars
+        idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
+        
+        email = idinfo['email']
+        if not email.endswith("@zepto.com"):
+            raise HTTPException(status_code=403, detail="Access Denied – Unauthorized User")
+        
+        # Create JWT session
+        expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode = {"sub": email, "exp": expires}
+        token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        
+        response.set_cookie(
+            key="session_token", 
+            value=token, 
+            httponly=True, 
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            samesite="lax",
+            secure=IS_VERCEL
+        )
+        return {"status": "success", "email": email}
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+@app.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("session_token")
+    return {"status": "success"}
+
+@app.get("/auth/user")
+async def get_user_info(email: str = Depends(get_current_user)):
+    return {"email": email}
+
+@app.get("/auth/config")
+async def get_auth_config():
+    return {"google_client_id": GOOGLE_CLIENT_ID}
+
 class ProcessRequest(BaseModel):
     ratio: str
 
 @app.post("/upload")
-async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: UploadFile = File(...)):
+async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: UploadFile = File(...), email: str = Depends(get_current_user)):
     print(f"Received upload request: {file.filename}, ratio: {ratio}")
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
         raise HTTPException(status_code=400, detail="Invalid file format. Please upload an Excel or CSV file.")
@@ -70,7 +138,8 @@ async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: Uploa
 async def upload_pvid(
     background_tasks: BackgroundTasks, 
     folder1x1: Optional[List[UploadFile]] = File(None), 
-    folder3x4: Optional[List[UploadFile]] = File(None)
+    folder3x4: Optional[List[UploadFile]] = File(None),
+    email: str = Depends(get_current_user)
 ):
     print(f"Received PVID upload: {len(folder1x1) if folder1x1 else 0} files (1x1), {len(folder3x4) if folder3x4 else 0} files (3x4)")
     
@@ -106,7 +175,7 @@ async def upload_pvid(
     return {"task_id": task_id}
 
 @app.get("/status/{task_id}")
-async def get_status(task_id: str):
+async def get_status(task_id: str, email: str = Depends(get_current_user)):
     if task_id not in tasks_status:
         load_status()  # Try reloading from disk
     if task_id not in tasks_status:
@@ -114,7 +183,7 @@ async def get_status(task_id: str):
     return tasks_status[task_id]
 
 @app.get("/download/{task_id}")
-async def download_zip(task_id: str):
+async def download_zip(task_id: str, email: str = Depends(get_current_user)):
     zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="File not found")
