@@ -78,8 +78,8 @@ async def login(response: Response, data: dict):
         # GOOGLE_CLIENT_ID must be set in env vars
         idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
         
-        email = idinfo['email']
-        if not email.endswith("@zepto.com"):
+        email = idinfo['email'].lower()
+        if not (email.endswith("@zepto.com") or email.endswith("@zeptonow.com")):
             raise HTTPException(status_code=403, detail="Access Denied – Unauthorized User")
         
         # Create JWT session
