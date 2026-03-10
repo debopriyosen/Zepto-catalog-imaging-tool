@@ -123,7 +123,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         processed_count = 0
         total_images_processed = 0
         errors = []
-        failed_pvids = []  # List of dicts: {"PVID": ..., "URL": ..., "Error": ...}
+        conversion_results = [] # List of dicts for the full log
         
         target_ratio = get_target_ratio(ratio)
         task_dir = os.path.join(PROCESSED_DIR, task_id)
@@ -173,14 +173,26 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
                     processed_img.save(save_path, "JPEG", quality=95)
                     total_images_processed += 1
                     
+                    # Track Success
+                    conversion_results.append({
+                        "PVID": pvid,
+                        "ImageSlot": num,
+                        "URL": url,
+                        "Status": "Success",
+                        "Error": ""
+                    })
+                    
                 except Exception as e:
                     error_msg = f"Row {index+1}, Image {num}: Error processing {url} - {str(e)}"
                     print(error_msg)
                     errors.append(error_msg)
-                    failed_pvids.append({
+                    
+                    # Track Failure
+                    conversion_results.append({
                         "PVID": pvid,
                         "ImageSlot": num,
                         "URL": url,
+                        "Status": "Failed",
                         "Error": str(e)
                     })
             
@@ -196,12 +208,12 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
             except:
                 pass
         
-        # Create Failed Log CSV if any failures
-        if failed_pvids:
-            failed_df = pd.DataFrame(failed_pvids)
-            log_path = os.path.join(task_dir, "failed_log.csv")
-            failed_df.to_csv(log_path, index=False)
-            print(f"Created failed_log.csv with {len(failed_pvids)} entries.")
+        # Create Full Conversion Log CSV
+        if conversion_results:
+            log_df = pd.DataFrame(conversion_results)
+            log_path = os.path.join(task_dir, "conversion_log.csv")
+            log_df.to_csv(log_path, index=False)
+            print(f"Created conversion_log.csv with {len(conversion_results)} entries.")
             
         if total_images_processed == 0:
             tasks_status[task_id]["errors"].insert(0, "No valid images were found in the uploaded file. Please check column names (PVID, Image1, etc.) and URLs.")
