@@ -79,7 +79,13 @@ async def login(response: Response, data: dict):
         idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
         
         email = idinfo['email'].lower()
-        if not (email.endswith("@zepto.com") or email.endswith("@zeptonow.com")):
+        allowed_domains = ["@zepto.com", "@zeptonow.com"]
+        allowed_individual_emails = ["debopriyosensupu@gmail.com"]
+        
+        is_allowed_domain = any(email.endswith(domain) for domain in allowed_domains)
+        is_allowed_individual = email in allowed_individual_emails
+        
+        if not (is_allowed_domain or is_allowed_individual):
             raise HTTPException(status_code=403, detail="Access Denied – Unauthorized User")
         
         # Create JWT session
