@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zepto Catalog Image Automation Tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.cdnfonts.com/css/tt-norms-pro" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=1.5">
+</head>
+
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="container">
+        <!-- Navigation / Header -->
+        <header class="header">
+            <h1 class="title" id="main-title">Zepto Catalog <span class="accent">Image Automation Tool</span></h1>
+            <p class="subtitle" id="main-subtitle">Select a tool to begin optimizing your catalog visuals.</p>
+            <button id="logout-btn" class="btn btn-logout hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                <span>Logout</span>
+            </button>
+        </header>
+
+        <!-- Login View -->
+        <div id="login-view" class="view">
+            <section class="card glass login-card">
+                <div class="login-header">
+                    <div class="logo-area">
+                        <img src="logo.png" alt="Zepto" class="login-logo">
+                    </div>
+                    <h2>Internal Access Only</h2>
+                    <p class="text-muted">Please sign in to continue</p>
+                </div>
+                <form id="login-form" class="login-form">
+                    <div class="input-group">
+                        <label class="label">Email Address</label>
+                        <input type="email" id="login-email" class="text-input" placeholder="name@zeptonow.com"
+                            required>
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Password</label>
+                        <input type="password" id="login-password" class="text-input" placeholder="••••••••" required>
+                    </div>
+                    <div id="login-error" class="error-text hidden">Access Denied – Unauthorized User</div>
+                    <button type="submit" class="btn btn-primary w-100">Sign In</button>
+                </form>
+            </section>
+        </div>
+
+        <!-- Home Page View -->
+        <div id="home-view" class="view hidden">
+            <div class="grid-tools">
+                <div class="tool-card glass" id="btn-goto-ratio">
+                    <div class="tool-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                    </div>
+                    <h2>Image Ratio Converter</h2>
+                    <p>Bulk resize, crop, and pad product images to specific aspect ratios.</p>
+                    <button class="btn btn-primary small">Launch Converter</button>
+                </div>
+                <div class="tool-card glass" id="btn-goto-pvid">
+                    <div class="tool-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                            <line x1="12" y1="11" x2="12" y2="17" />
+                            <line x1="9" y1="14" x2="15" y2="14" />
+                        </svg>
+                    </div>
+                    <h2>PVID Folder Organizer</h2>
+                    <p>Efficiently group and structure images by PVID (UUID) from multiple folders.</p>
+                    <button class="btn btn-primary small">Organize Files</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ratio Converter View -->
+        <div id="ratio-view" class="view hidden">
+            <div class="back-nav">
+                <button class="btn-text" id="back-to-home-ratio">&larr; Back to Tools</button>
+            </div>
+            <section class="card glass">
+                <div class="upload-section">
+                    <div class="input-group">
+                        <label for="excel-upload" class="label">Upload Excel File (.xlsx)</label>
+                        <div class="file-drop-area" id="drop-area">
+                            <input type="file" id="excel-upload" accept=".xlsx, .xls" hidden>
+                            <div class="upload-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="17 8 12 3 7 8" />
+                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                </svg>
+                            </div>
+                            <p class="upload-text">Drag & drop your Excel file here or <span
+                                    class="browse">browse</span></p>
+                            <p class="file-name" id="file-name">No file selected</p>
+                        </div>
+                    </div>
+
+                    <div class="controls">
+                        <div class="input-group">
+                            <label class="label">Choose Aspect Ratio</label>
+                            <div class="custom-dropdown" id="ratio-dropdown">
+                                <div class="dropdown-trigger" id="dropdown-trigger">
+                                    <span id="selected-label">Convert to 3:4</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round" class="dropdown-arrow">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </div>
+                                <div class="dropdown-menu" id="dropdown-menu">
+                                    <div class="dropdown-item active" data-value="3:4">Convert to 3:4</div>
+                                    <div class="dropdown-item" data-value="1:1">Convert to 1:1</div>
+                                    <div class="dropdown-item" data-value="4:5">Convert to 4:5</div>
+                                </div>
+                                <input type="hidden" id="ratio-select" value="3:4">
+                            </div>
+                        </div>
+                        <button id="process-btn" class="btn btn-primary" disabled>Process Images</button>
+                    </div>
+                </div>
+
+                <div id="status-container" class="status-container hidden">
+                    <div class="progress-wrapper">
+                        <div class="progress-info">
+                            <span id="progress-text">Processing...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div id="error-log" class="error-log hidden">
+                        <h3>Errors (<span id="error-count">0</span>)</h3>
+                        <ul id="error-list"></ul>
+                    </div>
+                    <div class="download-section hidden" id="download-section">
+                        <a id="download-btn" class="btn btn-success" href="#">Download ZIP</a>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- PVID Organizer View -->
+        <div id="pvid-view" class="view hidden">
+            <div class="back-nav">
+                <button class="btn-text" id="back-to-home-pvid">&larr; Back to Tools</button>
+            </div>
+            <section class="card glass">
+                <div class="pvid-upload-grid">
+                    <div class="input-group">
+                        <label class="label">Upload Folder 1 (1x1 images)</label>
+                        <div class="file-drop-area folder-drop" id="drop-area-1x1">
+                            <input type="file" id="folder-1x1" webkitdirectory directory multiple hidden>
+                            <div class="upload-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path
+                                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                </svg>
+                            </div>
+                            <p class="upload-text">Select 1x1 Folder</p>
+                            <p class="file-name" id="name-1x1">No folder selected</p>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Upload Folder 2 (3x4 images)</label>
+                        <div class="file-drop-area folder-drop" id="drop-area-3x4">
+                            <input type="file" id="folder-3x4" webkitdirectory directory multiple hidden>
+                            <div class="upload-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path
+                                        d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                </svg>
+                            </div>
+                            <p class="upload-text">Select 3x4 Folder</p>
+                            <p class="file-name" id="name-3x4">No folder selected</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="center-btn">
+                    <button id="run-grouping-btn" class="btn btn-primary" disabled>Run Grouping</button>
+                </div>
+
+                <div id="pvid-status-container" class="status-container hidden">
+                    <div class="progress-wrapper">
+                        <div class="progress-info">
+                            <span id="pvid-progress-text">Processing...</span>
+                            <span id="pvid-progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="pvid-progress-fill" class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div id="pvid-error-log" class="error-log hidden">
+                        <h3>Errors (<span id="pvid-error-count">0</span>)</h3>
+                        <ul id="pvid-error-list"></ul>
+                    </div>
+                    <div class="download-section hidden" id="pvid-download-section">
+                        <a id="pvid-download-btn" class="btn btn-success" href="#">Download Grouped ZIP</a>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <footer class="footer">
+            <p>&copy; Created by Debopriyo Sen 2026</p>
+        </footer>
+    </main>
+
+    <script src="script.js?v=1.3"></script>
+</body>
+
+</html>
