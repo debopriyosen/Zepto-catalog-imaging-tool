@@ -102,171 +102,108 @@ def resize_with_padding(img, target_ratio):
     new_img.paste(img, (paste_x, paste_y))
     return new_img
 
-def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_status: Dict):
-    try:
-        print(f"Starting task {task_id} with file {excel_path}")
+def get_work_items(excel_path: str, ratio: str) -> Tuple[List[dict], dict]:
+    # Support both Excel and CSV
+    if excel_path.endswith('.csv'):
+        df = pd.read_csv(excel_path)
+    else:
+        if openpyxl is None:
+            raise ImportError("The 'openpyxl' package is required to read Excel files.")
+        df = pd.read_excel(excel_path, engine='openpyxl')
+    
+    # Normalize columns
+    df.columns = [str(c).strip() for c in df.columns]
+    col_map = {str(c).lower().replace(" ", "").replace("_", "").replace(".", ""): c for c in df.columns}
+    
+    pvid_col = col_map.get("pvid")
+    pvid_to_part = {}
+    unique_pvids_seen = []
+    
+    work_items = []
+    for index, row in df.iterrows():
+        pvid = str(row.get(pvid_col, f"unknown_{index}")) if pvid_col else f"unknown_{index}"
         
-        # Support both Excel and CSV
-        if excel_path.endswith('.csv'):
-            df = pd.read_csv(excel_path)
-        else:
-            if openpyxl is None:
-                raise ImportError("The 'openpyxl' package is required to read Excel files. Please ensure it is installed.")
-            df = pd.read_excel(excel_path, engine='openpyxl')
+        if pvid not in pvid_to_part:
+            unique_pvids_seen.append(pvid)
+            part_num = (len(unique_pvids_seen) - 1) // 100 + 1
+            pvid_to_part[pvid] = f"part{part_num}"
+        part_folder = pvid_to_part[pvid]
+
+        for num, suffix in NAMING_CONVENTION.items():
+            possible_keys = [f"image{num}", f"image_link{num}", f"imagelink{num}"]
+            actual_col = None
+            for p_key in possible_keys:
+                norm_p_key = p_key.lower().replace(" ", "").replace("_", "").replace(".", "")
+                if norm_p_key in col_map:
+                    actual_col = col_map[norm_p_key]
+                    break
             
-        total_rows = len(df)
-        
-        # Log basic info
-        print(f"Excel loaded. Shape: {df.shape}")
-        print(f"Original Columns: {list(df.columns)}")
-        
-        # Normalize column names (ignore case, spaces, underscores, and dots)
-        df.columns = [str(c).strip() for c in df.columns]
-        col_map = {str(c).lower().replace(" ", "").replace("_", "").replace(".", ""): c for c in df.columns}
-        print(f"Normalized Column Map: {col_map}")
-        
-        if total_rows > 0:
-            print(f"First row data: {df.iloc[0].to_dict()}")
-        
-        processed_count = 0
-        total_images_processed = 0
-        errors = []
-        processed_count = tasks_status[task_id].get("processed_rows_count", 0)
-        total_images_processed = tasks_status[task_id].get("total_images_processed", 0)
-        conversion_results = tasks_status[task_id].get("conversion_results", [])
-        
-        # Track what's already in the ZIP to avoid duplicates
-        processed_keys = set()
-        for res in conversion_results:
-            if res["Status"] == "Success":
-                processed_keys.add(f"{res['PVID']}_{res['ImageSlot']}")
-
-        target_ratio = get_target_ratio(ratio)
-        zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
-        
-        # Find PVID column
-        pvid_col = col_map.get("pvid")
-        pvid_to_part = {}
-        unique_pvids_seen = []
-
-        # Prepare all possible tasks
-        all_tasks = []
-        for index, row in df.iterrows():
-            pvid = str(row.get(pvid_col, f"unknown_{index}")) if pvid_col else f"unknown_{index}"
+            if not actual_col: continue
+            url = row.get(actual_col)
+            if pd.isna(url) or not str(url).strip().startswith("http"): continue
             
-            # Grouping logic
-            if pvid not in pvid_to_part:
-                unique_pvids_seen.append(pvid)
-                part_num = (len(unique_pvids_seen) - 1) // 100 + 1
-                pvid_to_part[pvid] = f"part{part_num}"
-            part_folder = pvid_to_part[pvid]
+            work_items.append({
+                "pvid": pvid, "num": num, "url": str(url).strip(), 
+                "suffix": suffix, "part_folder": part_folder, "row_index": index
+            })
+            
+    return work_items, col_map
 
-            for num, suffix in NAMING_CONVENTION.items():
-                possible_keys = [f"image{num}", f"image_link{num}", f"imagelink{num}"]
-                actual_col = None
-                for p_key in possible_keys:
-                    norm_p_key = p_key.lower().replace(" ", "").replace("_", "").replace(".", "")
-                    if norm_p_key in col_map:
-                        actual_col = col_map[norm_p_key]
-                        break
-                
-                if not actual_col: continue
-                url = row.get(actual_col)
-                if pd.isna(url) or not str(url).strip().startswith("http"): continue
-                
-                url = str(url).strip()
-                if f"{pvid}_{num}" in processed_keys:
-                    continue # Skip already successfully processed images
-                
-                all_tasks.append({
-                    "pvid": pvid, "num": num, "url": url, "suffix": suffix, "part_folder": part_folder, "row_index": index
-                })
-
-        def process_image(item):
-            try:
-                resp = requests.get(item["url"], timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-                resp.raise_for_status()
-                img = Image.open(BytesIO(resp.content))
-                proc = resize_with_padding(img, target_ratio)
-                buf = BytesIO()
-                proc.save(buf, "JPEG", quality=95)
-                buf.seek(0)
-                return {**item, "success": True, "data": buf.getvalue()}
-            except Exception as e:
-                return {**item, "success": False, "error": str(e)}
-
-        # Open ZIP in append mode if resuming, else write
-        zip_mode = 'a' if os.path.exists(zip_path) else 'w'
-        
-        # Use ThreadPoolExecutor for parallel downloads and resizing
-        with zipfile.ZipFile(zip_path, zip_mode, zipfile.ZIP_DEFLATED) as zipf:
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(process_image, task): task for task in all_tasks}
-                
-                completed_rows = set()
-                for future in as_completed(futures):
-                    res = future.result()
-                    pvid, num, url = res["pvid"], res["num"], res["url"]
-                    
-                    if res["success"]:
-                        filename = f"{res['part_folder']}/{pvid}{res['suffix']}"
-                        zipf.writestr(filename, res["data"])
-                        total_images_processed += 1
-                        conversion_results.append({
-                            "PVID": pvid, "ImageSlot": num, "URL": url, "Status": "Success", "Error": ""
-                        })
-                    else:
-                        conversion_results.append({
-                            "PVID": pvid, "ImageSlot": num, "URL": url, "Status": "Failed", "Error": res["error"]
-                        })
-                    
-                    # Update progress based on row completion (approximate)
-                    completed_rows.add(res["row_index"])
-                    new_processed_count = len(completed_rows)
-                    if new_processed_count > processed_count:
-                        processed_count = new_processed_count
-                        progress = int((processed_count / total_rows) * 100)
-                        tasks_status[task_id].update({
-                            "progress": min(99, progress),
-                            "processed_rows_count": processed_count,
-                            "total_images_processed": total_images_processed,
-                            "conversion_results": conversion_results
-                        })
-                        save_current_status(tasks_status)
-
-            # Finalize: Add log to ZIP
-            log_df = pd.DataFrame(conversion_results)
-            log_io = BytesIO()
-            log_df.to_csv(log_io, index=False)
-            # Remove old log if appending
-            if zip_mode == 'a':
-                # Note: ZipFile doesn't support easy deletion. We'll just write it; most extractors take the last one.
-                pass
-            zipf.writestr("conversion_log.csv", log_io.getvalue())
-        
-        tasks_status[task_id]["status"] = "completed"
-        tasks_status[task_id]["progress"] = 100
-        tasks_status[task_id].update({"zip_url": f"/download/{task_id}"})
-        
+def process_batch_items(task_id: str, items: List[dict], ratio: str) -> List[dict]:
+    target_ratio = get_target_ratio(ratio)
+    zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
+    
+    def process_single(item):
         try:
-            with open(STATUS_FILE, "w") as f:
-                json.dump(tasks_status, f)
-        except:
-            pass
-            
-        print(f"Task {task_id} completed. Processed {total_images_processed} images.")
+            resp = requests.get(item["url"], timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+            resp.raise_for_status()
+            img = Image.open(BytesIO(resp.content))
+            proc = resize_with_padding(img, target_ratio)
+            buf = BytesIO()
+            proc.save(buf, "JPEG", quality=95)
+            buf.seek(0)
+            return {**item, "success": True, "data": buf.getvalue()}
+        except Exception as e:
+            return {**item, "success": False, "error": str(e)}
+
+    batch_results = []
+    # Process batch in parallel for speed
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(process_single, item) for item in items]
         
-        # No need to cleanup task_dir as imgs were jamais on disk
-        pass
+        # Append to ZIP as they complete
+        with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zipf:
+            for future in as_completed(futures):
+                res = future.result()
+                if res["success"]:
+                    filename = f"{res['part_folder']}/{res['pvid']}{res['suffix']}"
+                    zipf.writestr(filename, res["data"])
+                    batch_results.append({
+                        "PVID": res["pvid"], "ImageSlot": res["num"], "URL": res["url"], 
+                        "Status": "Success", "Error": ""
+                    })
+                else:
+                    batch_results.append({
+                        "PVID": res["pvid"], "ImageSlot": res["num"], "URL": res["url"], 
+                        "Status": "Failed", "Error": res["error"]
+                    })
+    
+    return batch_results
+
+def finalize_conversion_task(task_id: str, conversion_results: List[dict]) -> str:
+    zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
+    
+    # Add final log to ZIP
+    log_df = pd.DataFrame(conversion_results)
+    log_io = BytesIO()
+    log_df.to_csv(log_io, index=False)
+    
+    with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zipf:
+        zipf.writestr("conversion_log.csv", log_io.getvalue())
         
-    except Exception as e:
-        print(f"Critical error in task {task_id}: {str(e)}")
-        tasks_status[task_id]["status"] = "failed"
-        tasks_status[task_id]["errors"].append(f"Critical Error: {str(e)}")
-    finally:
-        # Cleanup uploaded excel
-        if os.path.exists(excel_path):
-            os.remove(excel_path)
+    return f"/download/{task_id}"
+        
+# Helper functions for orchestrated batch processing completed.
 
 def process_pvid_grouping(task_id: str, dir1x1: str, dir3x4: str, tasks_status: Dict):
     try:

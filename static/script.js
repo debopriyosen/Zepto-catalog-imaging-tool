@@ -238,18 +238,72 @@ processBtn.addEventListener('click', async () => {
     downloadSection.classList.add('hidden');
     progressFill.style.width = '0%';
     progressPercent.textContent = '0%';
-    progressText.textContent = 'Uploading...';
+    progressText.textContent = 'Uploading and extracting metadata...';
 
     try {
-        const response = await fetch(`/upload?ratio=${encodeURIComponent(ratio)}`, {
+        // 1. Upload Metadata and get items
+        const metadataRes = await fetch(`/upload-metadata?ratio=${encodeURIComponent(ratio)}`, {
             method: 'POST',
             body: formData
         });
-        if (!response.ok) throw new Error('Upload failed');
-        const data = await response.json();
-        startPolling(data.task_id, 'ratio');
+
+        if (!metadataRes.ok) throw new Error('Failed to upload and parse metadata');
+        const { task_id, work_items, total_items } = await metadataRes.json();
+
+        if (total_items === 0) {
+            throw new Error('No valid images found in the uploaded file. Check column names (PVID, Image1, etc.) and URLs.');
+        }
+
+        const BATCH_SIZE = 50;
+        let processedItems = 0;
+        const conversionResults = [];
+
+        // 2. Process in Batches
+        for (let i = 0; i < work_items.length; i += BATCH_SIZE) {
+            const batch = work_items.slice(i, i + BATCH_SIZE);
+            progressText.textContent = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(total_items / BATCH_SIZE)}...`;
+
+            const batchRes = await fetch(`/process-batch?task_id=${task_id}&ratio=${encodeURIComponent(ratio)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(batch)
+            });
+
+            if (!batchRes.ok) throw new Error(`Batch processing failed at item ${i}`);
+            const data = await batchRes.json();
+
+            conversionResults.push(...data.results);
+            processedItems += batch.length;
+
+            // Update UI progress
+            const progress = Math.round((processedItems / total_items) * 98); // save 2% for finalization
+            progressFill.style.width = `${progress}%`;
+            progressPercent.textContent = `${progress}%`;
+        }
+
+        // 3. Finalize Task
+        progressText.textContent = 'Finalizing ZIP and logs...';
+        const finalizeRes = await fetch(`/finalize-task?task_id=${task_id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(conversionResults)
+        });
+
+        if (!finalizeRes.ok) throw new Error('Failed to finalize task');
+        const finalData = await finalizeRes.json();
+
+        // Complete!
+        progressFill.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressText.textContent = 'Processing completed successfully!';
+
+        zipDownloadLink.href = finalData.zip_url;
+        downloadSection.classList.remove('hidden');
+
     } catch (error) {
+        console.error(error);
         alert('Error: ' + error.message);
+        progressText.textContent = 'Failed';
         processBtn.disabled = false;
     }
 });

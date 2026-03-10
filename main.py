@@ -121,11 +121,14 @@ async def get_auth_config():
 class ProcessRequest(BaseModel):
     ratio: str
 
-@app.post("/upload")
-async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: UploadFile = File(...), email: str = Depends(get_current_user)):
-    print(f"Received upload request: {file.filename}, ratio: {ratio}")
+@app.post("/upload-metadata")
+async def upload_metadata(
+    ratio: str, 
+    file: UploadFile = File(...), 
+    email: str = Depends(get_current_user)
+):
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
-        raise HTTPException(status_code=400, detail="Invalid file format. Please upload an Excel or CSV file.")
+        raise HTTPException(status_code=400, detail="Invalid file format")
     
     task_id = str(uuid.uuid4())
     file_path = os.path.join(UPLOAD_DIR, f"{task_id}_{file.filename}")
@@ -133,12 +136,58 @@ async def upload_file(background_tasks: BackgroundTasks, ratio: str, file: Uploa
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    tasks_status[task_id] = {"status": "processing", "progress": 0, "errors": [], "zip_url": None}
-    save_status()
-    
-    background_tasks.add_task(processor.process_catalog_images, task_id, file_path, ratio, tasks_status)
-    
-    return {"task_id": task_id}
+    try:
+        # Extract work items without processing images yet
+        work_items, col_map = processor.get_work_items(file_path, ratio)
+        
+        tasks_status[task_id] = {
+            "status": "batch_processing", 
+            "progress": 0, 
+            "errors": [], 
+            "zip_url": None,
+            "total_items": len(work_items)
+        }
+        save_status()
+        
+        return {
+            "task_id": task_id, 
+            "work_items": work_items,
+            "total_items": len(work_items)
+        }
+    except Exception as e:
+        if os.path.exists(file_path): os.remove(file_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process-batch")
+async def process_batch(
+    task_id: str,
+    ratio: str,
+    items: List[dict],
+    email: str = Depends(get_current_user)
+):
+    try:
+        results = processor.process_batch_items(task_id, items, ratio)
+        return {"status": "success", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/finalize-task")
+async def finalize_task(
+    task_id: str,
+    conversion_results: List[dict],
+    email: str = Depends(get_current_user)
+):
+    try:
+        zip_url = processor.finalize_conversion_task(task_id, conversion_results)
+        tasks_status[task_id].update({
+            "status": "completed",
+            "progress": 100,
+            "zip_url": zip_url
+        })
+        save_status()
+        return {"zip_url": zip_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/pvid/init")
 async def pvid_init(email: str = Depends(get_current_user)):
