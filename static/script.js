@@ -297,7 +297,7 @@ processBtn.addEventListener('click', async () => {
         progressPercent.textContent = '100%';
         progressText.textContent = 'Processing completed successfully!';
 
-        zipDownloadLink.href = finalData.zip_url;
+        downloadBtn.href = finalData.zip_url;
         downloadSection.classList.remove('hidden');
 
     } catch (error) {
