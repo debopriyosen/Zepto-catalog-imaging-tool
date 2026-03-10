@@ -6,15 +6,20 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 import processor
 
 app = FastAPI(title="Catalog Image Processor")
 
 # Directories for processing
-UPLOAD_DIR = "uploads"
-PROCESSED_DIR = "processed"
-OUTPUT_DIR = "output"
+# Vercel filesystem is read-only except for /tmp
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+BASE_STORAGE = "/tmp" if IS_VERCEL else "."
+
+UPLOAD_DIR = os.path.join(BASE_STORAGE, "uploads")
+PROCESSED_DIR = os.path.join(BASE_STORAGE, "processed")
+OUTPUT_DIR = os.path.join(BASE_STORAGE, "output")
+STATUS_FILE = os.path.join(BASE_STORAGE, "tasks_status.json")
 
 for d in [UPLOAD_DIR, PROCESSED_DIR, OUTPUT_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -23,7 +28,6 @@ import json
 
 # In-memory task status (for active sessions)
 tasks_status: Dict[str, Dict] = {}
-STATUS_FILE = "tasks_status.json"
 
 def save_status():
     with open(STATUS_FILE, "w") as f:

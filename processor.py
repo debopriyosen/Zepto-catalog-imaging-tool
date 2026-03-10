@@ -12,6 +12,15 @@ from datetime import datetime
 
 UUID_RE = re.compile(r"^(?P<uuid>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_(?P<label>.+)$")
 
+# Vercel filesystem is read-only except for /tmp
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+BASE_STORAGE = "/tmp" if IS_VERCEL else "."
+
+UPLOAD_DIR = os.path.join(BASE_STORAGE, "uploads")
+PROCESSED_DIR = os.path.join(BASE_STORAGE, "processed")
+OUTPUT_DIR = os.path.join(BASE_STORAGE, "output")
+STATUS_FILE = os.path.join(BASE_STORAGE, "tasks_status.json")
+
 def parse_name(filename: str) -> Optional[Tuple[str, str, str]]:
     base = os.path.basename(filename)
     stem, ext = os.path.splitext(base)
@@ -117,7 +126,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         failed_pvids = []  # List of dicts: {"PVID": ..., "URL": ..., "Error": ...}
         
         target_ratio = get_target_ratio(ratio)
-        task_dir = os.path.join("processed", task_id)
+        task_dir = os.path.join(PROCESSED_DIR, task_id)
         os.makedirs(task_dir, exist_ok=True)
         
         # Find PVID column (case-insensitive, space-insensitive)
@@ -182,7 +191,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
             
             # Save status to disk via a simple side effect (main.py's global)
             try:
-                with open("tasks_status.json", "w") as f:
+                with open(STATUS_FILE, "w") as f:
                     json.dump(tasks_status, f)
             except:
                 pass
@@ -198,7 +207,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
             tasks_status[task_id]["errors"].insert(0, "No valid images were found in the uploaded file. Please check column names (PVID, Image1, etc.) and URLs.")
         
         # Create ZIP
-        zip_path = os.path.join("output", f"{task_id}.zip")
+        zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(task_dir):
                 for file in files:
@@ -209,7 +218,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
         tasks_status[task_id].update({"zip_url": f"/download/{task_id}"})
         
         try:
-            with open("tasks_status.json", "w") as f:
+            with open(STATUS_FILE, "w") as f:
                 json.dump(tasks_status, f)
         except:
             pass
@@ -231,7 +240,7 @@ def process_catalog_images(task_id: str, excel_path: str, ratio: str, tasks_stat
 def process_pvid_grouping(task_id: str, dir1x1: str, dir3x4: str, tasks_status: Dict):
     try:
         print(f"Starting PVID grouping task {task_id}")
-        dest_root = os.path.join("processed", task_id)
+        dest_root = os.path.join(PROCESSED_DIR, task_id)
         group_root = os.path.join(dest_root, "Group by PVID")
         os.makedirs(group_root, exist_ok=True)
         
@@ -325,7 +334,7 @@ def process_pvid_grouping(task_id: str, dir1x1: str, dir3x4: str, tasks_status: 
         tasks_status[task_id]["progress"] = 90
         
         # Final Phase: ZIP creation
-        zip_path = os.path.join("output", f"{task_id}.zip")
+        zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # We only want to include "Group by PVID" and its subdirs
             for root, dirs, files in os.walk(group_root):
@@ -356,7 +365,7 @@ def process_pvid_grouping(task_id: str, dir1x1: str, dir3x4: str, tasks_status: 
 
 def save_current_status(tasks_status):
     try:
-        with open("tasks_status.json", "w") as f:
+        with open(STATUS_FILE, "w") as f:
             json.dump(tasks_status, f)
     except:
         pass
