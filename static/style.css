@@ -362,6 +362,15 @@ body {
     transform: scale(1.1);
 }
 
+.file-drop-area * {
+    pointer-events: none;
+}
+
+.file-drop-area .btn-clear {
+    pointer-events: auto;
+    /* Re-enable for the clear button */
+}
+
 .upload-icon {
     margin-bottom: 1.5rem;
     color: var(--primary);

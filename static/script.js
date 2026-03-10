@@ -132,10 +132,9 @@ document.addEventListener('click', () => {
 
 // --- RATIO CONVERTER LOGIC ---
 const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('excel-upload');
+const fileInput = document.getElementById('file-input');
 const fileName = document.getElementById('file-name');
 const processBtn = document.getElementById('process-btn');
-// const ratioSelect = document.getElementById('ratio-select'); // Already declared above
 const statusContainer = document.getElementById('status-container');
 const progressFill = document.getElementById('progress-fill');
 const progressPercent = document.getElementById('progress-percent');
@@ -156,7 +155,10 @@ fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 ['dragover', 'dragleave', 'drop'].forEach(evt => {
     dropArea.addEventListener(evt, (e) => {
         e.preventDefault();
-        if (evt === 'dragover') dropArea.classList.add('active');
+        if (evt === 'dragover') {
+            dropArea.classList.add('active');
+            e.dataTransfer.dropEffect = 'copy';
+        }
         else dropArea.classList.remove('active');
         if (evt === 'drop') handleFiles(e.dataTransfer.files);
     });
@@ -281,7 +283,10 @@ function checkPvidReady() {
         area.addEventListener(evt, async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (evt === 'dragover') area.classList.add('active');
+            if (evt === 'dragover') {
+                area.classList.add('active');
+                e.dataTransfer.dropEffect = 'copy';
+            }
             else area.classList.remove('active');
 
             if (evt === 'drop') {
