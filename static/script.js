@@ -356,7 +356,7 @@ processBtn.addEventListener('click', async () => {
 async function processImageClientSide(url, targetRatio) {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.crossOrigin = "anonymous"; // CRITICAL for CORS
+        img.crossOrigin = "anonymous";
         img.onload = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -367,11 +367,9 @@ async function processImageClientSide(url, targetRatio) {
 
             let targetW, targetH;
             if (currentRatio > targetRatio) {
-                // Image is wider than target
                 targetW = w;
                 targetH = w / targetRatio;
             } else {
-                // Image is taller than target
                 targetH = h;
                 targetW = h * targetRatio;
             }
@@ -379,11 +377,9 @@ async function processImageClientSide(url, targetRatio) {
             canvas.width = targetW;
             canvas.height = targetH;
 
-            // Fill background white
             ctx.fillStyle = "#FFFFFF";
             ctx.fillRect(0, 0, targetW, targetH);
 
-            // Center image
             const x = (targetW - w) / 2;
             const y = (targetH - h) / 2;
             ctx.drawImage(img, x, y, w, h);
@@ -393,8 +389,10 @@ async function processImageClientSide(url, targetRatio) {
                 else reject(new Error('Canvas toBlob failed'));
             }, 'image/jpeg', 0.95);
         };
-        img.onerror = () => reject(new Error('Failed to load image. This might be due to CORS restrictions on the image server.'));
-        img.src = url;
+        img.onerror = () => reject(new Error('Failed to load image. This might be due to CORS restrictions on the image server or the URL being invalid.'));
+
+        // Use the backend proxy to bypass CORS
+        img.src = `/proxy?url=${encodeURIComponent(url)}`;
     });
 }
 

@@ -12,6 +12,7 @@ from google.auth.transport import requests as google_requests
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import processor
+import requests
 
 app = FastAPI(title="Catalog Image Processor")
 
@@ -141,6 +142,21 @@ async def logo():
         media_type="application/zip", 
         filename=f"processed_images_{task_id[:8]}.zip"
     )
+
+@app.get("/proxy")
+async def proxy_image(url: str, email: str = Depends(get_current_user)):
+    try:
+        # Fetch the image on behalf of the client
+        resp = requests.get(url, timeout=10, stream=True)
+        resp.raise_for_status()
+        
+        # Return the bytes with the original content type
+        return Response(
+            content=resp.content, 
+            media_type=resp.headers.get("Content-Type", "image/jpeg")
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files for frontend
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
