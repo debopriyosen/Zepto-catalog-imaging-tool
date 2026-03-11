@@ -173,7 +173,13 @@ document.addEventListener('click', () => {
     dropdown.classList.remove('open');
 });
 
-// --- RATIO CONVERTER LOGIC ---
+// --- RATIO CONVERTER LOGIC (CLIENT-SIDE) ---
+const NAMING_CONVENTION = {
+    "1": "_Front.jpg", "2": "_Back.jpg", "3": "_Nutri.jpg",
+    "4": "_Celebration1.jpg", "5": "_Celebration2.jpg", "6": "_Celebration3.jpg",
+    "7": "_Celebration4.jpg", "8": "_Celebration5.jpg", "9": "_Celebration6.jpg", "10": "_Celebration7.jpg"
+};
+
 const dropArea = document.getElementById('drop-area');
 const fileInput = document.getElementById('file-input');
 const fileName = document.getElementById('file-name');
@@ -190,7 +196,6 @@ const downloadBtn = document.getElementById('download-btn');
 const clearRatioBtn = document.getElementById('clear-ratio');
 
 let selectedFile = null;
-let pollInterval = null;
 
 dropArea.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
@@ -228,77 +233,117 @@ clearRatioBtn.addEventListener('click', (e) => {
 processBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
     const ratio = ratioSelect.value;
+    const [targetW, targetH] = ratio.split(':').map(Number);
+    const targetRatio = targetW / targetH;
 
     processBtn.disabled = true;
     statusContainer.classList.remove('hidden');
     errorLog.classList.add('hidden');
+    errorList.innerHTML = '';
     downloadSection.classList.add('hidden');
     progressFill.style.width = '0%';
     progressPercent.textContent = '0%';
-    progressText.textContent = 'Uploading and extracting metadata...';
+    progressText.textContent = 'Reading Excel file...';
 
     try {
-        // 1. Upload Metadata and get items
-        const metadataRes = await fetch(`/upload-metadata?ratio=${encodeURIComponent(ratio)}`, {
-            method: 'POST',
-            body: formData
-        });
+        // 1. Read Excel File
+        const data = await selectedFile.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(worksheet);
 
-        if (!metadataRes.ok) throw new Error('Failed to upload and parse metadata');
-        const { task_id, work_items, total_items } = await metadataRes.json();
+        if (json.length === 0) throw new Error('Excel file is empty.');
 
-        if (total_items === 0) {
-            throw new Error('No valid images found in the uploaded file. Check column names (PVID, Image1, etc.) and URLs.');
-        }
+        // 2. Extract Work Items
+        const workItems = [];
+        const uniquePvids = [];
+        const pvidToPart = {};
 
-        const BATCH_SIZE = 50;
-        let processedItems = 0;
-        const conversionResults = [];
+        json.forEach((row, index) => {
+            // Find PVID column (case-insensitive)
+            const pvidKey = Object.keys(row).find(k => k.toLowerCase().trim() === 'pvid');
+            const pvid = pvidKey ? String(row[pvidKey]).trim() : `unknown_${index}`;
 
-        // 2. Process in Batches
-        for (let i = 0; i < work_items.length; i += BATCH_SIZE) {
-            const batch = work_items.slice(i, i + BATCH_SIZE);
-            progressText.textContent = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(total_items / BATCH_SIZE)}...`;
+            if (!pvidToPart[pvid]) {
+                uniquePvids.push(pvid);
+                const partNum = Math.floor((uniquePvids.length - 1) / 100) + 1;
+                pvidToPart[pvid] = `part${partNum}`;
+            }
 
-            const batchRes = await fetch(`/process-batch?task_id=${task_id}&ratio=${encodeURIComponent(ratio)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(batch)
+            // Find Image Links
+            Object.keys(row).forEach(key => {
+                const normKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                let slot = null;
+                if (normKey.startsWith('image') && !isNaN(normKey.replace('image', ''))) {
+                    slot = normKey.replace('image', '');
+                } else if (normKey.startsWith('imagelink') && !isNaN(normKey.replace('imagelink', ''))) {
+                    slot = normKey.replace('imagelink', '');
+                }
+
+                if (slot && NAMING_CONVENTION[slot]) {
+                    const url = String(row[key]).trim();
+                    if (url.startsWith('http')) {
+                        workItems.push({
+                            pvid, slot, url, suffix: NAMING_CONVENTION[slot], part: pvidToPart[pvid]
+                        });
+                    }
+                }
             });
-
-            if (!batchRes.ok) throw new Error(`Batch processing failed at item ${i}`);
-            const data = await batchRes.json();
-
-            conversionResults.push(...data.results);
-            processedItems += batch.length;
-
-            // Update UI progress
-            const progress = Math.round((processedItems / total_items) * 98); // save 2% for finalization
-            progressFill.style.width = `${progress}%`;
-            progressPercent.textContent = `${progress}%`;
-        }
-
-        // 3. Finalize Task
-        progressText.textContent = 'Finalizing ZIP and logs...';
-        const finalizeRes = await fetch(`/finalize-task?task_id=${task_id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(conversionResults)
         });
 
-        if (!finalizeRes.ok) throw new Error('Failed to finalize task');
-        const finalData = await finalizeRes.json();
+        if (workItems.length === 0) throw new Error('No valid image URLs found. Ensure columns are named PVID, Image1, Image2, etc.');
 
-        // Complete!
+        const total = workItems.length;
+        let completed = 0;
+        let failed = 0;
+        const results = [];
+        const zip = new JSZip();
+
+        // 3. Process Images in Parallel (with concurrency limit)
+        const CONCURRENCY = 10;
+        const chunks = [];
+        for (let i = 0; i < workItems.length; i += CONCURRENCY) {
+            chunks.push(workItems.slice(i, i + CONCURRENCY));
+        }
+
+        progressText.textContent = `Processing ${total} images...`;
+
+        for (const chunk of chunks) {
+            await Promise.all(chunk.map(async (item) => {
+                try {
+                    const blob = await processImageClientSide(item.url, targetRatio);
+                    zip.folder(item.part).file(`${item.pvid}${item.suffix}`, blob);
+                    results.push({ PVID: item.pvid, Slot: item.slot, URL: item.url, Status: 'Success', Error: '' });
+                } catch (err) {
+                    failed++;
+                    results.push({ PVID: item.pvid, Slot: item.slot, URL: item.url, Status: 'Failed', Error: err.message });
+                    addErrorMessage(`${item.pvid} (Slot ${item.slot}): ${err.message}`);
+                }
+                completed++;
+                const percent = Math.round((completed / total) * 95);
+                progressFill.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+            }));
+        }
+
+        // 4. Generate CSV Log
+        progressText.textContent = 'Generating final bundle...';
+        const csvContent = "PVID,ImageSlot,URL,Status,Error\n" +
+            results.map(r => `"${r.PVID}","${r.Slot}","${r.URL}","${r.Status}","${r.Error}"`).join("\n");
+        zip.file("conversion_log.csv", csvContent);
+
+        // 5. Create ZIP and Download
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipUrl = URL.createObjectURL(zipBlob);
+
+        downloadBtn.href = zipUrl;
+        downloadBtn.download = `catalog_output_${new Date().getTime()}.zip`;
+        downloadSection.classList.remove('hidden');
+
         progressFill.style.width = '100%';
         progressPercent.textContent = '100%';
-        progressText.textContent = 'Processing completed successfully!';
-
-        downloadBtn.href = finalData.zip_url;
-        downloadSection.classList.remove('hidden');
+        progressText.textContent = `Completed! ${total - failed} success, ${failed} failed.`;
 
     } catch (error) {
         console.error(error);
@@ -307,6 +352,59 @@ processBtn.addEventListener('click', async () => {
         processBtn.disabled = false;
     }
 });
+
+async function processImageClientSide(url, targetRatio) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous"; // CRITICAL for CORS
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            let w = img.width;
+            let h = img.height;
+            const currentRatio = w / h;
+
+            let targetW, targetH;
+            if (currentRatio > targetRatio) {
+                // Image is wider than target
+                targetW = w;
+                targetH = w / targetRatio;
+            } else {
+                // Image is taller than target
+                targetH = h;
+                targetW = h * targetRatio;
+            }
+
+            canvas.width = targetW;
+            canvas.height = targetH;
+
+            // Fill background white
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, targetW, targetH);
+
+            // Center image
+            const x = (targetW - w) / 2;
+            const y = (targetH - h) / 2;
+            ctx.drawImage(img, x, y, w, h);
+
+            canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Canvas toBlob failed'));
+            }, 'image/jpeg', 0.95);
+        };
+        img.onerror = () => reject(new Error('Failed to load image. This might be due to CORS restrictions on the image server.'));
+        img.src = url;
+    });
+}
+
+function addErrorMessage(msg) {
+    errorLog.classList.remove('hidden');
+    const li = document.createElement('li');
+    li.textContent = msg;
+    errorList.appendChild(li);
+    errorCount.textContent = errorList.children.length;
+}
 
 // --- PVID ORGANIZER LOGIC ---
 const dropArea1x1 = document.getElementById('drop-area-1x1');
@@ -451,112 +549,85 @@ runGroupingBtn.addEventListener('click', async () => {
     pvidDownloadSection.classList.add('hidden');
     pvidProgressFill.style.width = '0%';
     pvidProgressPercent.textContent = '0%';
-    pvidProgressText.textContent = 'Initializing task...';
+    pvidProgressText.textContent = 'Grouping files by PVID...';
 
     try {
-        // 1. Initialize Task
-        const initRes = await fetch('/pvid/init', { method: 'POST' });
-        if (!initRes.ok) throw new Error('Failed to initialize PVID task');
-        const { task_id } = await initRes.json();
+        const zip = new JSZip();
+        const pvidMap = {};
 
-        const totalFiles = files1x1.length + files3x4.length;
-        let uploadedCount = 0;
+        // 1. Map all files to their PVIDs
+        const processFiles = (files, slotSuffix) => {
+            files.forEach(file => {
+                const name = file.name;
+                const pvidMatch = name.match(/^([a-f0-9-]+)/i);
+                const pvid = pvidMatch ? pvidMatch[1] : 'unknown';
 
-        // 2. Upload Files Sequentially
-        const uploadFolder = async (files, folderName) => {
-            for (const file of files) {
-                const formData = new FormData();
-                formData.append('file', file);
-
-                const uploadRes = await fetch(`/pvid/upload-file?task_id=${task_id}&folder=${folderName}`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!uploadRes.ok) throw new Error(`Failed to upload ${file.name}`);
-
-                uploadedCount++;
-                const uploadProgress = Math.round((uploadedCount / totalFiles) * 100);
-                pvidProgressFill.style.width = `${uploadProgress}%`;
-                pvidProgressPercent.textContent = `${uploadProgress}%`;
-                pvidProgressText.textContent = `Uploading files (${uploadedCount}/${totalFiles})...`;
-            }
+                if (!pvidMap[pvid]) pvidMap[pvid] = [];
+                pvidMap[pvid].push({ file, slotSuffix });
+            });
         };
 
-        if (files1x1.length > 0) await uploadFolder(files1x1, '1x1');
-        if (files3x4.length > 0) await uploadFolder(files3x4, '3x4');
+        processFiles(files1x1, '_1x1');
+        processFiles(files3x4, '_3x4');
 
-        // 3. Trigger Process
-        pvidProgressText.textContent = 'Starting processing...';
-        const startRes = await fetch(`/pvid/process?task_id=${task_id}`, { method: 'POST' });
-        if (!startRes.ok) throw new Error('Failed to start PVID processing');
+        const uniquePvids = Object.keys(pvidMap);
+        const totalPvids = uniquePvids.length;
 
-        // 4. Start Polling
-        startPolling(task_id, 'pvid');
+        if (totalPvids === 0) throw new Error('No files found to organize.');
+
+        // 2. Add files to ZIP in parts (max 100 PVIDs per part)
+        for (let i = 0; i < totalPvids; i++) {
+            const pvid = uniquePvids[i];
+            const partNum = Math.floor(i / 100) + 1;
+            const partFolder = zip.folder(`part${partNum}`);
+
+            pvidMap[pvid].forEach(item => {
+                partFolder.file(item.file.name, item.file);
+            });
+
+            // Update Progress
+            const progress = Math.round(((i + 1) / totalPvids) * 90);
+            pvidProgressFill.style.width = `${progress}%`;
+            pvidProgressPercent.textContent = `${progress}%`;
+            pvidProgressText.textContent = `Organizing PVID ${i + 1} of ${totalPvids}...`;
+
+            // Allow UI to breathe
+            if (i % 50 === 0) await new Promise(r => setTimeout(r, 0));
+        }
+
+        // 3. Generate ZIP
+        pvidProgressText.textContent = 'Generating final bundle...';
+        const zipBlob = await zip.generateAsync({ type: "blob" }, (metadata) => {
+            const progress = 90 + Math.round(metadata.percent / 10);
+            pvidProgressFill.style.width = `${progress}%`;
+            pvidProgressPercent.textContent = `${progress}%`;
+        });
+
+        const zipUrl = URL.createObjectURL(zipBlob);
+        pvidDownloadBtn.href = zipUrl;
+        pvidDownloadBtn.download = `organized_pvids_${new Date().getTime()}.zip`;
+        pvidDownloadSection.classList.remove('hidden');
+
+        pvidProgressFill.style.width = '100%';
+        pvidProgressPercent.textContent = '100%';
+        pvidProgressText.textContent = 'Completed successfully!';
 
     } catch (error) {
+        console.error(error);
         alert('Error: ' + error.message);
-        runGroupingBtn.disabled = false;
         pvidProgressText.textContent = 'Failed';
+        runGroupingBtn.disabled = false;
     }
 });
 
-// --- COMMON POLLING ---
-function startPolling(taskId, type) {
-    const textEl = type === 'ratio' ? progressText : pvidProgressText;
-    const fillEl = type === 'ratio' ? progressFill : pvidProgressFill;
-    const percentEl = type === 'ratio' ? progressPercent : pvidProgressPercent;
-    const downloadSec = type === 'ratio' ? downloadSection : pvidDownloadSection;
-    const downloadA = type === 'ratio' ? downloadBtn : pvidDownloadBtn;
-    const btn = type === 'ratio' ? processBtn : runGroupingBtn;
-
-    textEl.textContent = 'Processing...';
-
-    const interval = setInterval(async () => {
-        try {
-            const response = await fetch(`/status/${taskId}`);
-            const data = await response.json();
-
-            const percent = data.progress || 0;
-            fillEl.style.width = `${percent}%`;
-            percentEl.textContent = `${percent}%`;
-
-            if (data.status === 'completed' || data.status === 'failed') {
-                clearInterval(interval);
-                btn.disabled = false;
-
-                if (data.status === 'completed') {
-                    textEl.textContent = 'Completed!';
-                    if (data.zip_url) {
-                        downloadSec.classList.remove('hidden');
-                        downloadA.href = data.zip_url;
-                    }
-                } else {
-                    textEl.textContent = 'Failed';
-                }
-
-                showErrors(data.errors, type);
-            }
-        } catch (error) {
-            console.error('Polling error:', error);
-            clearInterval(interval);
-        }
-    }, 2000);
-}
-
-function showErrors(errors, type) {
-    const logEl = type === 'ratio' ? errorLog : pvidErrorLog;
-    const listEl = type === 'ratio' ? errorList : pvidErrorList;
-    const countEl = type === 'ratio' ? errorCount : pvidErrorCount;
-
-    if (errors && errors.length > 0) {
-        logEl.classList.remove('hidden');
-        countEl.textContent = errors.length;
-        listEl.innerHTML = '';
-        errors.forEach(err => {
-            const li = document.createElement('li');
-            li.textContent = err;
-            listEl.appendChild(li);
-        });
-    }
+// Helper for UI error messages in Ratio tool (re-defining since showErrors is gone)
+function showRatioErrors(errors) {
+    errorLog.classList.remove('hidden');
+    errorCount.textContent = errors.length;
+    errorList.innerHTML = '';
+    errors.forEach(err => {
+        const li = document.createElement('li');
+        li.textContent = err;
+        errorList.appendChild(li);
+    });
 }
