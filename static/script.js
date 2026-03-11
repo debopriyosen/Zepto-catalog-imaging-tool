@@ -547,58 +547,179 @@ runGroupingBtn.addEventListener('click', async () => {
     pvidDownloadSection.classList.add('hidden');
     pvidProgressFill.style.width = '0%';
     pvidProgressPercent.textContent = '0%';
-    pvidProgressText.textContent = 'Grouping files by PVID...';
+    pvidProgressText.textContent = 'Initializing PVID logic...';
 
     try {
         const zip = new JSZip();
-        const pvidMap = {};
+        const rootFolder = zip.folder("Group by PVID");
+        const logRows = [];
+        const reportRows = [];
 
-        // 1. Map all files to their PVIDs
-        const processFiles = (files, slotSuffix) => {
-            files.forEach(file => {
-                const name = file.name;
-                const pvidMatch = name.match(/^([a-f0-9-]+)/i);
-                const pvid = pvidMatch ? pvidMatch[1] : 'unknown';
+        const uuidRe = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_(.+)$/;
 
-                if (!pvidMap[pvid]) pvidMap[pvid] = [];
-                pvidMap[pvid].push({ file, slotSuffix });
-            });
+        const parseName = (name) => {
+            const stem = name.substring(0, name.lastIndexOf('.')) || name;
+            const ext = name.substring(name.lastIndexOf('.'));
+            const match = stem.match(uuidRe);
+            return match ? { uuid: match[1].trim(), label: match[2].trim(), ext } : null;
         };
 
-        processFiles(files1x1, '_1x1');
-        processFiles(files3x4, '_3x4');
+        const logAppend = (phase, bucket, uuid, label, action, reason, src, dest) => {
+            logRows.push({ phase, bucket, uuid, label, action, reason, src_path: src, dest_path: dest });
+        };
 
-        const uniquePvids = Object.keys(pvidMap);
-        const totalPvids = uniquePvids.length;
-
-        if (totalPvids === 0) throw new Error('No files found to organize.');
-
-        // 2. Add files to ZIP in parts (max 100 PVIDs per part)
-        for (let i = 0; i < totalPvids; i++) {
-            const pvid = uniquePvids[i];
-            const partNum = Math.floor(i / 100) + 1;
-            const partFolder = zip.folder(`part${partNum}`);
-
-            pvidMap[pvid].forEach(item => {
-                partFolder.file(item.file.name, item.file);
+        // 1. Initial Grouping
+        pvidProgressText.textContent = 'Phase 1/4: Initial Grouping...';
+        const groupPvid = (files, bucket) => {
+            const map = {};
+            files.forEach(f => {
+                const parsed = parseName(f.name);
+                if (parsed) {
+                    if (!map[parsed.uuid]) map[parsed.uuid] = {};
+                    map[parsed.uuid][parsed.label] = { file: f, ext: parsed.ext };
+                    const dest = `Group by PVID/${bucket}/${parsed.uuid}/${parsed.label}${parsed.ext}`;
+                    rootFolder.folder(bucket).folder(parsed.uuid).file(`${parsed.label}${parsed.ext}`, f);
+                    logAppend("GROUP", bucket, parsed.uuid, parsed.label, "COPY", "", f.name, dest);
+                } else {
+                    logAppend("GROUP", bucket, "N/A", "N/A", "SKIPPED", "name_mismatch", f.name, "");
+                }
             });
+            return map;
+        };
 
-            // Update Progress
-            const progress = Math.round(((i + 1) / totalPvids) * 90);
-            pvidProgressFill.style.width = `${progress}%`;
-            pvidProgressPercent.textContent = `${progress}%`;
-            pvidProgressText.textContent = `Organizing PVID ${i + 1} of ${totalPvids}...`;
+        const map1x1 = groupPvid(files1x1, "1x1");
+        const map3x4 = groupPvid(files3x4, "3x4");
 
-            // Allow UI to breathe
-            if (i % 50 === 0) await new Promise(r => setTimeout(r, 0));
-        }
+        // 2. Match and Triage
+        pvidProgressText.textContent = 'Phase 2/4: Triage Match vs Non-Match...';
+        const allUuids = Array.from(new Set([...Object.keys(map1x1), ...Object.keys(map3x4)])).sort();
+        const nonMatchedFolder = rootFolder.folder("non_matched");
 
-        // 3. Generate ZIP
+        allUuids.forEach(u => {
+            const labels1 = map1x1[u] ? Object.keys(map1x1[u]) : [];
+            const labels3 = map3x4[u] ? Object.keys(map3x4[u]) : [];
+
+            const set1 = new Set(labels1);
+            const set3 = new Set(labels3);
+            const isMatch = labels1.length > 0 && labels3.length > 0 && labels1.length === labels3.length && labels1.every(l => set3.has(l));
+
+            if (isMatch) {
+                reportRows.push({ uuid: u, status: "MATCHED", labels_1x1: labels1.sort().join(','), labels_3x4: labels3.sort().join(','), reason: "" });
+            } else {
+                let status = "NON_MATCHED";
+                let reason = "";
+                if (labels1.length > 0 && labels3.length > 0) {
+                    status = "NON_MATCHED_DIFFERENT_LABELS";
+                    reason = "label_sets_differ";
+                } else if (labels1.length > 0) {
+                    status = "NON_MATCHED_ONLY_1x1";
+                    reason = "missing_in_3x4";
+                } else {
+                    status = "NON_MATCHED_ONLY_3x4";
+                    reason = "missing_in_1x1";
+                }
+                reportRows.push({ uuid: u, status, labels_1x1: labels1.sort().join(','), labels_3x4: labels3.sort().join(','), reason });
+
+                // Copy to non_matched
+                if (map1x1[u]) {
+                    Object.entries(map1x1[u]).forEach(([lab, info]) => {
+                        nonMatchedFolder.folder("1x1").folder(u).file(`${lab}${info.ext}`, info.file);
+                        logAppend("NON_MATCHED", "1x1", u, lab, "COPY", "", info.file.name, `non_matched/1x1/${u}/${lab}${info.ext}`);
+                    });
+                }
+                if (map3x4[u]) {
+                    Object.entries(map3x4[u]).forEach(([lab, info]) => {
+                        nonMatchedFolder.folder("3x4").folder(u).file(`${lab}${info.ext}`, info.file);
+                        logAppend("NON_MATCHED", "3x4", u, lab, "COPY", "", info.file.name, `non_matched/3x4/${u}/${lab}${info.ext}`);
+                    });
+                }
+            }
+        });
+
+        // 3. Prune and Promote (Matched by Python)
+        pvidProgressText.textContent = 'Phase 3/4: Pruning and Promotion...';
+        const mpFolder = rootFolder.folder("Matched by Python");
+        const mapMP1 = {};
+        const mapMP3 = {};
+
+        allUuids.forEach(u => {
+            if (map1x1[u] && map3x4[u]) {
+                const labels1 = Object.keys(map1x1[u]);
+                const labels3 = Object.keys(map3x4[u]);
+                const commonLabels = labels1.filter(l => map3x4[u][l]);
+
+                if (commonLabels.length > 0 && (labels1.length !== labels3.length || labels1.some(l => !map3x4[u][l]))) {
+                    // It was non-matched but has common labels
+                    commonLabels.forEach(lab => {
+                        const info1 = map1x1[u][lab];
+                        const info3 = map3x4[u][lab];
+
+                        mpFolder.folder("1x1").folder(u).file(`${lab}${info1.ext}`, info1.file);
+                        mpFolder.folder("3x4").folder(u).file(`${lab}${info3.ext}`, info3.file);
+
+                        if (!mapMP1[u]) mapMP1[u] = {};
+                        if (!mapMP3[u]) mapMP3[u] = {};
+                        mapMP1[u][lab] = info1;
+                        mapMP3[u][lab] = info3;
+
+                        logAppend("PROMOTE", "1x1", u, lab, "COPY", "pruned_match", info1.file.name, `Matched by Python/1x1/${u}/${lab}${info1.ext}`);
+                        logAppend("PROMOTE", "3x4", u, lab, "COPY", "pruned_match", info3.file.name, `Matched by Python/3x4/${u}/${lab}${info3.ext}`);
+                    });
+                }
+            }
+        });
+
+        // 4. Build GTG
+        pvidProgressText.textContent = 'Phase 4/4: Building GTG Sets...';
+        const gtg1Folder = rootFolder.folder("1x1_GTG");
+        const gtg3Folder = rootFolder.folder("3x4_GTG");
+
+        allUuids.forEach(u => {
+            let src1 = null;
+            let src3 = null;
+
+            // Prefer Matched by Python
+            if (mapMP1[u] && mapMP3[u]) {
+                src1 = mapMP1[u];
+                src3 = mapMP3[u];
+            } else if (map1x1[u] && map3x4[u]) {
+                // Check if naturally matched
+                const labels1 = Object.keys(map1x1[u]);
+                const labels3 = Object.keys(map3x4[u]);
+                if (labels1.length > 0 && labels1.length === labels3.length && labels1.every(l => map3x4[u][l])) {
+                    src1 = map1x1[u];
+                    src3 = map3x4[u];
+                }
+            }
+
+            if (src1 && src3) {
+                Object.entries(src1).forEach(([lab, info]) => {
+                    gtg1Folder.folder(u).file(`${lab}${info.ext}`, info.file);
+                    logAppend("GTG", "1x1", u, lab, "COPY", "", info.file.name, `1x1_GTG/${u}/${lab}${info.ext}`);
+                });
+                Object.entries(src3).forEach(([lab, info]) => {
+                    gtg3Folder.folder(u).file(`${lab}${info.ext}`, info.file);
+                    logAppend("GTG", "3x4", u, lab, "COPY", "", info.file.name, `3x4_GTG/${u}/${lab}${info.ext}`);
+                });
+            }
+        });
+
+        // 5. CSV Reports
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const csvHeader = "phase,bucket,uuid,label,action,reason,src_path,dest_path\n";
+        const csvBody = logRows.map(r => `"${r.phase}","${r.bucket}","${r.uuid}","${r.label}","${r.action}","${r.reason}","${r.src_path}","${r.dest_path}"`).join('\n');
+        rootFolder.file(`group_log_${ts}.csv`, csvHeader + csvBody);
+
+        const repHeader = "uuid,status,labels_1x1,labels_3x4,reason\n";
+        const repBody = reportRows.map(r => `"${r.uuid}","${r.status}","${r.labels_1x1}","${r.labels_3x4}","${r.reason}"`).join('\n');
+        rootFolder.file(`match_report_${ts}.csv`, repHeader + repBody);
+
+        // 6. Generate ZIP
         pvidProgressText.textContent = 'Generating final bundle...';
         const zipBlob = await zip.generateAsync({ type: "blob" }, (metadata) => {
-            const progress = 90 + Math.round(metadata.percent / 10);
-            pvidProgressFill.style.width = `${progress}%`;
-            pvidProgressPercent.textContent = `${progress}%`;
+            const progress = 95 + Math.round(metadata.percent / 20); // Mostly done
+            pvidProgressFill.style.width = `${Math.min(100, progress)}%`;
+            pvidProgressPercent.textContent = `${Math.min(100, progress)}%`;
         });
 
         const zipUrl = URL.createObjectURL(zipBlob);
