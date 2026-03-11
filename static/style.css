@@ -158,6 +158,19 @@ body {
     text-align: center;
 }
 
+.user-info {
+    position: fixed;
+    right: 2rem;
+    top: 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: capitalize;
+    z-index: 1000;
+    pointer-events: none;
+    letter-spacing: 0.05em;
+}
+
 .btn-logout {
     position: fixed;
     right: 2rem;
@@ -187,46 +200,43 @@ body {
     display: block;
 }
 
-/* Top Left Logo - Premium Glassmorphic Pill */
+/* Top Left Logo - Minimalist White */
 .top-left-logo {
     position: fixed;
     top: 2rem;
     left: 2rem;
-    background: rgba(255, 255, 255, 0.4);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 0.7rem 1.4rem;
-    border-radius: 100px;
-    /* Pill shape */
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 
-        0 4px 12px rgba(0, 0, 0, 0.1),
-        inset 0 0 10px rgba(255, 255, 255, 0.2);
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
     z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: all 0.3s ease;
 }
 
 .top-left-logo:hover {
-    transform: translateY(-3px) scale(1.05);
-    background: rgba(255, 255, 255, 1);
-    box-shadow: 
-        0 15px 30px -5px rgba(0, 0, 0, 0.3),
-        0 0 15px rgba(255, 255, 255, 0.4);
-    border-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
 }
 
 .top-left-logo img {
-    height: 22px;
+    height: 28px;
+    /* Slightly larger since box is gone */
     width: auto;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.05));
-    transition: transform 0.3s ease;
+    filter: brightness(0) invert(1);
+    /* Make logo white */
+    opacity: 0.8;
+    transition: all 0.3s ease;
 }
 
 .top-left-logo:hover img {
-    transform: scale(1.02);
+    opacity: 1;
+    transform: scale(1.05);
 }
 
 .title {

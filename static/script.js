@@ -28,15 +28,19 @@ async function switchView(viewName) {
     views[viewName].classList.remove('hidden');
 
     const logoutBtn = document.getElementById('logout-btn');
+    const userDisplay = document.getElementById('user-display');
     const header = document.querySelector('.header');
 
     if (viewName === 'login') {
         logoutBtn.classList.add('hidden');
+        userDisplay.classList.add('hidden');
         header.classList.add('hidden');
         initGoogleSignIn();
     } else {
         logoutBtn.classList.remove('hidden');
+        userDisplay.classList.remove('hidden');
         header.classList.remove('hidden');
+        updateUserDisplay();
     }
 
     if (viewName === 'home') {
@@ -128,7 +132,21 @@ async function handleLogout() {
         await fetch('/auth/logout', { method: 'POST' });
     } catch (e) { }
     userEmail = null;
+    document.getElementById('user-display').textContent = '';
     switchView('login');
+}
+
+function updateUserDisplay() {
+    const userDisplay = document.getElementById('user-display');
+    if (userEmail) {
+        // Extract name from email (e.g., john.doe@example.com -> John Doe or john.doe)
+        const namePart = userEmail.split('@')[0];
+        // Replace dots/underscores with spaces and capitalize
+        const displayName = namePart.replace(/[._]/g, ' ');
+        userDisplay.textContent = displayName;
+    } else {
+        userDisplay.textContent = '';
+    }
 }
 
 // Initial session check
