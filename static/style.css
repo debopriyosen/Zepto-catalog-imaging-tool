@@ -9,6 +9,7 @@
     --text: #f8fafc;
     --text-muted: #94a3b8;
     --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+    --white: #ffffff;
 }
 
 * {
@@ -184,6 +185,32 @@ body {
 
 .btn-logout svg {
     display: block;
+}
+
+/* Top Left Logo */
+.top-left-logo {
+    position: fixed;
+    top: 2rem;
+    left: 2rem;
+    background: var(--white);
+    padding: 0.75rem 1.25rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.top-left-logo:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.3);
+}
+
+.top-left-logo img {
+    height: 24px;
+    width: auto;
 }
 
 .title {
