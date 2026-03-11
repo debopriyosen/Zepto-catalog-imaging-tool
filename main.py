@@ -5,6 +5,8 @@ import pandas as pd
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from PIL import Image
+from io import BytesIO
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from google.oauth2 import id_token
@@ -147,16 +149,34 @@ async def logo():
 async def proxy_image(url: str, email: str = Depends(get_current_user)):
     try:
         # Fetch the image on behalf of the client
-        resp = requests.get(url, timeout=10, stream=True)
+        resp = requests.get(url, timeout=15, stream=True)
         resp.raise_for_status()
         
-        # Return the bytes with the original content type
+        # Load image with PIL
+        img_data = resp.content
+        img = Image.open(BytesIO(img_data))
+        
+        # Handle transparency: Convert to RGB with white background
+        if img.mode in ("RGBA", "P"):
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3]) # 3 is the alpha channel
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+            
+        # Save processed image to bytes
+        buffer = BytesIO()
+        img.save(buffer, format="JPEG", quality=95)
+        
         return Response(
-            content=resp.content, 
-            media_type=resp.headers.get("Content-Type", "image/jpeg")
+            content=buffer.getvalue(), 
+            media_type="image/jpeg"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Proxy error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 # Serve static files for frontend
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
