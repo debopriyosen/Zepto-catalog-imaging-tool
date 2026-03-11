@@ -158,23 +158,30 @@ body {
     text-align: center;
 }
 
-.user-info {
+.nav-actions {
     position: fixed;
-    right: 2rem;
-    top: 0.8rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: capitalize;
+    right: 2.5rem;
+    top: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.85rem;
     z-index: 1000;
-    pointer-events: none;
-    letter-spacing: 0.05em;
+}
+
+.user-info {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text);
+    text-transform: capitalize;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
 }
 
 .btn-logout {
-    position: fixed;
-    right: 2rem;
-    top: 2rem;
+    position: relative;
+    right: auto;
+    top: auto;
     background: rgba(251, 113, 133, 0.1);
     border: 1px solid rgba(251, 113, 133, 0.3);
     color: #fb7185;
@@ -185,7 +192,6 @@ body {
     font-weight: 600;
     font-size: 0.9rem;
     transition: all 0.3s ease;
-    z-index: 1000;
     border-radius: 12px;
 }
 

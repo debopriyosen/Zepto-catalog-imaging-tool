@@ -27,18 +27,15 @@ async function switchView(viewName) {
     Object.keys(views).forEach(v => views[v].classList.add('hidden'));
     views[viewName].classList.remove('hidden');
 
-    const logoutBtn = document.getElementById('logout-btn');
-    const userDisplay = document.getElementById('user-display');
+    const navActions = document.getElementById('nav-actions');
     const header = document.querySelector('.header');
 
     if (viewName === 'login') {
-        logoutBtn.classList.add('hidden');
-        userDisplay.classList.add('hidden');
+        navActions.classList.add('hidden');
         header.classList.add('hidden');
         initGoogleSignIn();
     } else {
-        logoutBtn.classList.remove('hidden');
-        userDisplay.classList.remove('hidden');
+        navActions.classList.remove('hidden');
         header.classList.remove('hidden');
         updateUserDisplay();
     }
@@ -133,6 +130,8 @@ async function handleLogout() {
     } catch (e) { }
     userEmail = null;
     document.getElementById('user-display').textContent = '';
+    const navActions = document.getElementById('nav-actions');
+    if (navActions) navActions.classList.add('hidden');
     switchView('login');
 }
 
