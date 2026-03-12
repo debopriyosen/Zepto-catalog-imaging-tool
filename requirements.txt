@@ -7,3 +7,4 @@ google-auth
 python-jose[cryptography]
 python-multipart
 openpyxl
+python-dotenv

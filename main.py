@@ -5,6 +5,9 @@ import pandas as pd
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from dotenv import load_dotenv
+
+load_dotenv() # Load local .env if it exists
 from PIL import Image
 from io import BytesIO
 from pydantic import BaseModel
