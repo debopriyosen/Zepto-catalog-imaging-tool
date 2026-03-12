@@ -258,6 +258,13 @@ fileInput.addEventListener('change', (e) => handleXlsxFiles(e.target.files));
 ratioFolderDrop.addEventListener('click', () => ratioFolderInput.click());
 ratioFolderInput.addEventListener('change', (e) => handleRatioFolder(e.target.files));
 
+// Logo Redirect to Home
+document.getElementById('logo-home').addEventListener('click', () => {
+    if (userEmail) { // Only redirect if logged in
+        switchView('home');
+    }
+});
+
 ['dragover', 'dragleave', 'drop'].forEach(evt => {
     // Ratio XLSX Area
     dropArea.addEventListener(evt, (e) => {
