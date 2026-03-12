@@ -101,24 +101,52 @@
                 <button class="btn-text" id="back-to-home-ratio">&larr; Back to Tools</button>
             </div>
             <section class="card glass">
+                <div class="mode-switcher">
+                    <button class="mode-tab active" data-mode="xlsx">XLSX Mode</button>
+                    <button class="mode-tab" data-mode="folder">Folder Mode</button>
+                </div>
+
                 <div class="upload-section">
-                    <div class="input-group">
-                        <label for="excel-upload" class="label">Upload Excel File (.xlsx)</label>
-                        <div class="file-drop-area" id="drop-area">
-                            <button class="btn-clear hidden" id="clear-ratio" title="Remove file">&times;</button>
-                            <input type="file" id="file-input" accept=".xlsx, .xls" hidden>
-                            <div class="upload-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                    <polyline points="17 8 12 3 7 8" />
-                                    <line x1="12" y1="3" x2="12" y2="15" />
-                                </svg>
+                    <!-- XLSX Mode UI -->
+                    <div id="xlsx-upload-container" class="mode-container">
+                        <div class="input-group">
+                            <label for="excel-upload" class="label">Upload Excel File (.xlsx)</label>
+                            <div class="file-drop-area" id="drop-area">
+                                <button class="btn-clear hidden" id="clear-ratio" title="Remove file">&times;</button>
+                                <input type="file" id="file-input" accept=".xlsx, .xls" hidden>
+                                <div class="upload-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="17 8 12 3 7 8" />
+                                        <line x1="12" y1="3" x2="12" y2="15" />
+                                    </svg>
+                                </div>
+                                <p class="upload-text">Drag & drop your Excel file here or <span
+                                        class="browse">browse</span></p>
+                                <p class="file-name" id="file-name">No file selected</p>
                             </div>
-                            <p class="upload-text">Drag & drop your Excel file here or <span
-                                    class="browse">browse</span></p>
-                            <p class="file-name" id="file-name">No file selected</p>
+                        </div>
+                    </div>
+
+                    <!-- Folder Mode UI -->
+                    <div id="folder-upload-container" class="mode-container hidden">
+                        <div class="input-group">
+                            <label for="folder-upload" class="label">Upload Parent Folder</label>
+                            <div class="file-drop-area" id="ratio-folder-drop">
+                                <button class="btn-clear hidden" id="clear-ratio-folder" title="Clear folder">&times;</button>
+                                <input type="file" id="ratio-folder-input" webkitdirectory directory multiple hidden>
+                                <div class="upload-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
+                                </div>
+                                <p class="upload-text">Select Parent Folder</p>
+                                <p class="file-name" id="ratio-folder-name">No folder selected</p>
+                            </div>
                         </div>
                     </div>
 

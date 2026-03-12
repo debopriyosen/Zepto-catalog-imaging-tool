@@ -190,6 +190,36 @@ document.addEventListener('click', () => {
     dropdown.classList.remove('open');
 });
 
+// --- MODE SWITCHER LOGIC ---
+let currentRatioMode = 'xlsx'; // 'xlsx' or 'folder'
+const modeTabs = document.querySelectorAll('.mode-tab');
+const xlsxContainer = document.getElementById('xlsx-upload-container');
+const folderContainer = document.getElementById('folder-upload-container');
+
+modeTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        currentRatioMode = tab.getAttribute('data-mode');
+        
+        // Update Tabs UI
+        modeTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update Containers
+        if (currentRatioMode === 'xlsx') {
+            xlsxContainer.classList.remove('hidden');
+            folderContainer.classList.add('hidden');
+            processBtn.disabled = !selectedFile;
+        } else {
+            xlsxContainer.classList.add('hidden');
+            folderContainer.classList.remove('hidden');
+            processBtn.disabled = selectedRatioFiles.length === 0;
+        }
+
+        // Reset Status
+        statusContainer.classList.add('hidden');
+    });
+});
+
 // --- RATIO CONVERTER LOGIC (CLIENT-SIDE) ---
 const NAMING_CONVENTION = {
     "1": "_Front.jpg", "2": "_Back.jpg", "3": "_Nutri.jpg",
@@ -200,6 +230,11 @@ const NAMING_CONVENTION = {
 const dropArea = document.getElementById('drop-area');
 const fileInput = document.getElementById('file-input');
 const fileName = document.getElementById('file-name');
+const ratioFolderDrop = document.getElementById('ratio-folder-drop');
+const ratioFolderInput = document.getElementById('ratio-folder-input');
+const ratioFolderName = document.getElementById('ratio-folder-name');
+const clearRatioFolderBtn = document.getElementById('clear-ratio-folder');
+
 const processBtn = document.getElementById('process-btn');
 const statusContainer = document.getElementById('status-container');
 const progressFill = document.getElementById('progress-fill');
@@ -213,23 +248,35 @@ const downloadBtn = document.getElementById('download-btn');
 const clearRatioBtn = document.getElementById('clear-ratio');
 
 let selectedFile = null;
+let selectedRatioFiles = []; // For Folder mode
 
+// XLSX File Input
 dropArea.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+fileInput.addEventListener('change', (e) => handleXlsxFiles(e.target.files));
+
+// Folder Input
+ratioFolderDrop.addEventListener('click', () => ratioFolderInput.click());
+ratioFolderInput.addEventListener('change', (e) => handleRatioFolder(e.target.files));
 
 ['dragover', 'dragleave', 'drop'].forEach(evt => {
+    // Ratio XLSX Area
     dropArea.addEventListener(evt, (e) => {
         e.preventDefault();
-        if (evt === 'dragover') {
-            dropArea.classList.add('active');
-            e.dataTransfer.dropEffect = 'copy';
-        }
+        if (evt === 'dragover') dropArea.classList.add('active');
         else dropArea.classList.remove('active');
-        if (evt === 'drop') handleFiles(e.dataTransfer.files);
+        if (evt === 'drop') handleXlsxFiles(e.dataTransfer.files);
+    });
+
+    // Ratio Folder Area
+    ratioFolderDrop.addEventListener(evt, (e) => {
+        e.preventDefault();
+        if (evt === 'dragover') ratioFolderDrop.classList.add('active');
+        else ratioFolderDrop.classList.remove('active');
+        if (evt === 'drop') handleRatioFolder(e.dataTransfer.files);
     });
 });
 
-function handleFiles(files) {
+function handleXlsxFiles(files) {
     if (files.length > 0) {
         selectedFile = files[0];
         fileName.textContent = selectedFile.name;
@@ -238,22 +285,54 @@ function handleFiles(files) {
     }
 }
 
+function handleRatioFolder(files) {
+    const fileList = Array.from(files);
+    // Filter for images only
+    selectedRatioFiles = fileList.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
+    
+    if (selectedRatioFiles.length > 0) {
+        ratioFolderName.textContent = `${selectedRatioFiles.length} images found`;
+        processBtn.disabled = false;
+        clearRatioFolderBtn.classList.remove('hidden');
+    } else {
+        ratioFolderName.textContent = 'No supported images found';
+        processBtn.disabled = true;
+    }
+}
+
 clearRatioBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     selectedFile = null;
     fileName.textContent = 'No file selected';
     fileInput.value = '';
-    processBtn.disabled = true;
+    processBtn.disabled = currentRatioMode === 'xlsx';
     clearRatioBtn.classList.add('hidden');
 });
 
-processBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
+clearRatioFolderBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectedRatioFiles = [];
+    ratioFolderName.textContent = 'No folder selected';
+    ratioFolderInput.value = '';
+    processBtn.disabled = currentRatioMode === 'folder';
+    clearRatioFolderBtn.classList.add('hidden');
+});
 
+processBtn.addEventListener('click', async () => {
     const ratio = ratioSelect.value;
     const [targetW, targetH] = ratio.split(':').map(Number);
     const targetRatio = targetW / targetH;
 
+    if (currentRatioMode === 'xlsx') {
+        if (!selectedFile) return;
+        await processXlsxMode(targetRatio);
+    } else {
+        if (selectedRatioFiles.length === 0) return;
+        await processFolderMode(targetRatio);
+    }
+});
+
+async function processXlsxMode(targetRatio) {
     processBtn.disabled = true;
     statusContainer.classList.remove('hidden');
     errorLog.classList.add('hidden');
@@ -329,7 +408,7 @@ processBtn.addEventListener('click', async () => {
         for (const chunk of chunks) {
             await Promise.all(chunk.map(async (item) => {
                 try {
-                    const blob = await processImageClientSide(item.url, targetRatio);
+                    const blob = await processImageUrlClientSide(item.url, targetRatio);
                     zip.folder(item.part).file(`${item.pvid}${item.suffix}`, blob);
                     results.push({ PVID: item.pvid, Slot: item.slot, URL: item.url, Status: 'Success', Error: '' });
                 } catch (err) {
@@ -368,9 +447,123 @@ processBtn.addEventListener('click', async () => {
         progressText.textContent = 'Failed';
         processBtn.disabled = false;
     }
-});
+}
 
-async function processImageClientSide(url, targetRatio) {
+async function processFolderMode(targetRatio) {
+    processBtn.disabled = true;
+    statusContainer.classList.remove('hidden');
+    errorLog.classList.add('hidden');
+    errorList.innerHTML = '';
+    downloadSection.classList.add('hidden');
+    progressFill.style.width = '0%';
+    progressPercent.textContent = '0%';
+    progressText.textContent = `Preparing ${selectedRatioFiles.length} images...`;
+
+    try {
+        const total = selectedRatioFiles.length;
+        let completed = 0;
+        let failed = 0;
+        const zip = new JSZip();
+
+        // Concurrency limit for large batches
+        const CONCURRENCY = 10;
+        const chunks = [];
+        for (let i = 0; i < selectedRatioFiles.length; i += CONCURRENCY) {
+            chunks.push(selectedRatioFiles.slice(i, i + CONCURRENCY));
+        }
+
+        for (const chunk of chunks) {
+            await Promise.all(chunk.map(async (file) => {
+                try {
+                    // 1. Load File as Image
+                    const imgBlob = await processLocalFileClientSide(file, targetRatio);
+                    
+                    // 2. Determine ZIP path (preserving structure)
+                    // webkitRelativePath looks like "ParentFolder/Sub/image.jpg"
+                    const fullPath = file.webkitRelativePath || file.name;
+                    zip.file(fullPath, imgBlob);
+                    
+                } catch (err) {
+                    failed++;
+                    addErrorMessage(`${file.name}: ${err.message}`);
+                }
+                completed++;
+                const percent = Math.round((completed / total) * 95);
+                progressFill.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                progressText.textContent = `Processing ${completed}/${total}...`;
+            }));
+        }
+
+        // 3. Create ZIP and Download
+        progressText.textContent = 'Packaging ZIP...';
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const zipUrl = URL.createObjectURL(zipBlob);
+
+        downloadBtn.href = zipUrl;
+        downloadBtn.download = `processed_folder_${new Date().getTime()}.zip`;
+        downloadSection.classList.remove('hidden');
+
+        progressFill.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressText.textContent = `Completed! ${total - failed} processed, ${failed} failed.`;
+
+    } catch (error) {
+        console.error(error);
+        alert('Error: ' + error.message);
+        progressText.textContent = 'Failed';
+        processBtn.disabled = false;
+    }
+}
+
+async function processLocalFileClientSide(file, targetRatio) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                let w = img.width;
+                let h = img.height;
+                const currentRatio = w / h;
+
+                let canvasW, canvasH;
+                if (currentRatio > targetRatio) {
+                    canvasW = w;
+                    canvasH = w / targetRatio;
+                } else {
+                    canvasH = h;
+                    canvasW = h * targetRatio;
+                }
+
+                canvas.width = canvasW;
+                canvas.height = canvasH;
+
+                // Fill white background
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(0, 0, canvasW, canvasH);
+
+                // Center image
+                const x = (canvasW - w) / 2;
+                const y = (canvasH - h) / 2;
+                ctx.drawImage(img, x, y, w, h);
+
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Canvas toBlob failed'));
+                }, 'image/jpeg', 0.95);
+            };
+            img.onerror = () => reject(new Error('Failed to load image contents'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read local file'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function processImageUrlClientSide(url, targetRatio) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = "anonymous";
