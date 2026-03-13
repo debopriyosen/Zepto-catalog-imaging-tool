@@ -20,11 +20,8 @@ from google.auth.transport import requests as google_requests
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import processor
-<<<<<<< Updated upstream
 import requests
-=======
 import gdrive_scanner
->>>>>>> Stashed changes
 
 app = FastAPI(title="Catalog Image Processor")
 
@@ -143,11 +140,10 @@ async def read_index():
 async def favicon():
     return FileResponse('static/favicon.png')
 
-<<<<<<< Updated upstream
 @app.get("/logo.png")
 async def logo():
     return FileResponse('static/logo.png')
-=======
+
 @app.post("/finalize-task")
 async def finalize_task(
     task_id: str,
@@ -308,7 +304,6 @@ async def gdrive_process_trigger(
 @app.get("/download/{task_id}")
 async def download_zip(task_id: str, email: str = Depends(get_current_user)):
     zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
->>>>>>> Stashed changes
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="File not found")
     
