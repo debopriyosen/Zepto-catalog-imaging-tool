@@ -12,10 +12,17 @@
         rel="stylesheet">
     <link rel="icon" type="image/png" href="favicon.png">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+<<<<<<< Updated upstream
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="stylesheet" href="style.css?v=2.2">
 </head><body>
+=======
+    <link rel="stylesheet" href="style.css?v=2.9">
+</head>
+
+<body>
+>>>>>>> Stashed changes
     <div class="background-blobs">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
@@ -91,6 +98,19 @@
                     <h2>PVID Folder Organizer</h2>
                     <p>Efficiently group and structure images by PVID (UUID) from multiple folders.</p>
                     <button class="btn btn-primary small">Organize Files</button>
+                </div>
+                <!-- New GDrive Scanner Tool Card -->
+                <div class="tool-card glass" id="btn-goto-gdrive">
+                    <div class="tool-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                            <circle cx="12" cy="13" r="3"></circle>
+                        </svg>
+                    </div>
+                    <h2>Google Drive Image Scanner</h2>
+                    <p>Provide a folder link to scan and extract PVID image mappings automatically.</p>
+                    <button class="btn btn-primary small">Scan Folders</button>
                 </div>
             </div>
         </div>
@@ -263,9 +283,61 @@
             </section>
         </div>
 
+        <!-- Google Drive Scanner View -->
+        <div id="gdrive-view" class="view hidden">
+            <div class="back-nav">
+                <button class="btn-text" id="back-to-home-gdrive">&larr; Back to Tools</button>
+            </div>
+            <section class="card glass">
+                <div class="upload-section" style="margin-bottom: 1.5rem;">
+                    <div class="input-group">
+                        <label for="gdrive-folder-id" class="label">Google Drive Folder ID or URL Link</label>
+                        <input type="text" id="gdrive-folder-id" class="text-input" placeholder="Paste full Google Drive URL link or just the folder ID...">
+                    </div>
+                    <button class="btn btn-primary w-100" id="scan-gdrive-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                        Scan Folder
+                    </button>
+                </div>
+                
+                <div class="info-box" style="background: var(--bg-secondary); padding: 1rem; border-radius: 8px; font-size: 0.9rem; border: 1px solid var(--border-color);">
+                    <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: var(--text-primary);">Folder Structure Guide</h4>
+                    <p style="margin-bottom: 0.5rem; color: var(--text-secondary);">The tool will automatically detect your template format:</p>
+                    <ul style="margin-top: 0; margin-bottom: 0; color: var(--text-secondary); padding-left: 1.2rem;">
+                        <li style="margin-bottom: 0.3rem;"><strong>1:1 Output:</strong> Provide a root folder that contains the PVID folders directly.</li>
+                        <li><strong>3:4 Output:</strong> Provide a root folder that contains exactly two folders named <code style="background: rgba(0,0,0,0.1); padding: 2px 4px; border-radius: 3px;">1x1_GTG</code> and <code style="background: rgba(0,0,0,0.1); padding: 2px 4px; border-radius: 3px;">3x4_GTG</code>. These folders should contain the PVID folders respectively.</li>
+                    </ul>
+                </div>
+                <div id="gdrive-status-container" class="status-container hidden">
+                    <div class="progress-wrapper">
+                        <div class="progress-info">
+                            <span id="gdrive-progress-text">Processing...</span>
+                            <span id="gdrive-progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="gdrive-progress-fill" class="progress-fill"></div>
+                        </div>
+                    </div>
+                    <div id="gdrive-error-log" class="error-log hidden">
+                        <h3>Errors (<span id="gdrive-error-count">0</span>)</h3>
+                        <ul id="gdrive-error-list"></ul>
+                    </div>
+                    
+                    <!-- Results Table (Hidden per user request, just CSV button) -->
+                    <div id="gdrive-results-container" class="results-container hidden">
+                        <div class="download-section">
+                            <button id="gdrive-download-csv-btn" class="btn btn-success">Download CSV</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
     </main>
 
-    <script src="script.js?v=2.0"></script>
+    <script src="script.js?v=2.9"></script>
 </body>
 
 </html>

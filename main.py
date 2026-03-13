@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import uuid
 import shutil
 import pandas as pd
@@ -17,7 +20,11 @@ from google.auth.transport import requests as google_requests
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import processor
+<<<<<<< Updated upstream
 import requests
+=======
+import gdrive_scanner
+>>>>>>> Stashed changes
 
 app = FastAPI(title="Catalog Image Processor")
 
@@ -136,9 +143,172 @@ async def read_index():
 async def favicon():
     return FileResponse('static/favicon.png')
 
+<<<<<<< Updated upstream
 @app.get("/logo.png")
 async def logo():
     return FileResponse('static/logo.png')
+=======
+@app.post("/finalize-task")
+async def finalize_task(
+    task_id: str,
+    conversion_results: List[dict],
+    email: str = Depends(get_current_user)
+):
+    try:
+        zip_url = processor.finalize_conversion_task(task_id, conversion_results)
+        tasks_status[task_id].update({
+            "status": "completed",
+            "progress": 100,
+            "zip_url": zip_url
+        })
+        save_status()
+        return {"zip_url": zip_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/pvid/init")
+async def pvid_init(email: str = Depends(get_current_user)):
+    task_id = str(uuid.uuid4())
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    os.makedirs(os.path.join(task_upload_dir, "1x1"), exist_ok=True)
+    os.makedirs(os.path.join(task_upload_dir, "3x4"), exist_ok=True)
+    
+    tasks_status[task_id] = {"status": "uploading", "progress": 0, "errors": [], "zip_url": None}
+    save_status()
+    return {"task_id": task_id}
+
+@app.post("/pvid/upload-file")
+async def pvid_upload_single(
+    task_id: str,
+    folder: str,
+    file: UploadFile = File(...),
+    email: str = Depends(get_current_user)
+):
+    if folder not in ["1x1", "3x4"]:
+        raise HTTPException(status_code=400, detail="Invalid folder name")
+    
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    target_dir = os.path.join(task_upload_dir, folder)
+    
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+    
+    safe_name = os.path.basename(file.filename)
+    if safe_name:
+        with open(os.path.join(target_dir, safe_name), "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+    return {"status": "success"}
+
+@app.post("/pvid/process")
+async def pvid_process_trigger(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    email: str = Depends(get_current_user)
+):
+    if task_id not in tasks_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    dir1x1 = os.path.join(task_upload_dir, "1x1")
+    dir3x4 = os.path.join(task_upload_dir, "3x4")
+    
+    tasks_status[task_id]["status"] = "processing"
+    save_status()
+    
+    background_tasks.add_task(processor.process_pvid_grouping, task_id, dir1x1, dir3x4, tasks_status)
+    return {"status": "started"}
+
+@app.post("/upload-pvid")
+async def upload_pvid_legacy(
+    background_tasks: BackgroundTasks, 
+    folder1x1: Optional[List[UploadFile]] = File(None), 
+    folder3x4: Optional[List[UploadFile]] = File(None),
+    email: str = Depends(get_current_user)
+):
+    # This remains for single-batch small uploads (Legacy)
+    task_id = str(uuid.uuid4())
+    task_upload_dir = os.path.join(UPLOAD_DIR, task_id)
+    dir1x1 = os.path.join(task_upload_dir, "1x1")
+    dir3x4 = os.path.join(task_upload_dir, "3x4")
+    
+    os.makedirs(dir1x1, exist_ok=True)
+    os.makedirs(dir3x4, exist_ok=True)
+    
+    if folder1x1:
+        for file in folder1x1:
+            safe_name = os.path.basename(file.filename)
+            if safe_name:
+                with open(os.path.join(dir1x1, safe_name), "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+            
+    if folder3x4:
+        for file in folder3x4:
+            safe_name = os.path.basename(file.filename)
+            if safe_name:
+                with open(os.path.join(dir3x4, safe_name), "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+            
+    tasks_status[task_id] = {"status": "processing", "progress": 0, "errors": [], "zip_url": None}
+    save_status()
+    
+    background_tasks.add_task(processor.process_pvid_grouping, task_id, dir1x1, dir3x4, tasks_status)
+    return {"task_id": task_id}
+
+@app.get("/status/{task_id}")
+async def get_status(task_id: str, email: str = Depends(get_current_user)):
+    if task_id not in tasks_status:
+        load_status()  # Try reloading from disk
+    if task_id not in tasks_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    # Return everything including results for gdrive task
+    return tasks_status[task_id]
+
+@app.post("/gdrive/init")
+async def gdrive_init(email: str = Depends(get_current_user)):
+    task_id = str(uuid.uuid4())
+    tasks_status[task_id] = {
+        "status": "pending", 
+        "progress": 0, 
+        "errors": [], 
+        "results": [],
+        "type": "gdrive"
+    }
+    save_status()
+    return {"task_id": task_id}
+
+class GDriveRequest(BaseModel):
+    folder_id: str
+
+@app.post("/gdrive/process")
+async def gdrive_process_trigger(
+    task_id: str,
+    payload: GDriveRequest,
+    background_tasks: BackgroundTasks,
+    email: str = Depends(get_current_user)
+):
+    if task_id not in tasks_status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if not payload.folder_id:
+        raise HTTPException(status_code=400, detail="Missing folder_id")
+        
+    tasks_status[task_id]["status"] = "processing"
+    save_status()
+    
+    background_tasks.add_task(
+        gdrive_scanner.process_gdrive_folder, 
+        task_id, 
+        payload.folder_id, 
+        tasks_status
+    )
+    return {"message": "Processing started"}
+
+@app.get("/download/{task_id}")
+async def download_zip(task_id: str, email: str = Depends(get_current_user)):
+    zip_path = os.path.join(OUTPUT_DIR, f"{task_id}.zip")
+>>>>>>> Stashed changes
     if not os.path.exists(zip_path):
         raise HTTPException(status_code=404, detail="File not found")
     

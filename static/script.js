@@ -3,7 +3,8 @@ const views = {
     login: document.getElementById('login-view'),
     home: document.getElementById('home-view'),
     ratio: document.getElementById('ratio-view'),
-    pvid: document.getElementById('pvid-view')
+    pvid: document.getElementById('pvid-view'),
+    gdrive: document.getElementById('gdrive-view')
 };
 
 const mainTitle = document.getElementById('main-title');
@@ -12,11 +13,13 @@ const mainSubtitle = document.getElementById('main-subtitle');
 // Navigation
 document.getElementById('btn-goto-ratio').addEventListener('click', () => switchView('ratio'));
 document.getElementById('btn-goto-pvid').addEventListener('click', () => switchView('pvid'));
+document.getElementById('btn-goto-gdrive').addEventListener('click', () => switchView('gdrive'));
 document.getElementById('back-to-home-ratio').addEventListener('click', () => switchView('home'));
 document.getElementById('back-to-home-pvid').addEventListener('click', () => switchView('home'));
+document.getElementById('back-to-home-gdrive').addEventListener('click', () => switchView('home'));
 document.getElementById('logout-btn').addEventListener('click', () => handleLogout());
 
-async function switchView(viewName) {
+async function switchView(viewName, pushHistory = true) {
     if (viewName !== 'login') {
         const authenticated = await checkAuth();
         if (!authenticated) {
@@ -49,6 +52,15 @@ async function switchView(viewName) {
     } else if (viewName === 'pvid') {
         mainTitle.innerHTML = 'PVID <span class="accent">Folder Organizer</span>';
         mainSubtitle.textContent = 'Group and structure images by PVID from dual folders.';
+    } else if (viewName === 'gdrive') {
+        mainTitle.innerHTML = 'Google Drive <span class="accent">Image Scanner</span>';
+        mainSubtitle.textContent = 'Scan and extract PVID image mappings from Google Drive.';
+    }
+
+    if (pushHistory && viewName !== 'login') {
+        const url = new URL(window.location);
+        url.searchParams.set('view', viewName);
+        window.history.pushState({ view: viewName }, '', url);
     }
 }
 
@@ -152,9 +164,22 @@ function updateUserDisplay() {
 window.addEventListener('DOMContentLoaded', async () => {
     const authenticated = await checkAuth();
     if (authenticated) {
-        switchView('home');
+        const urlParams = new URLSearchParams(window.location.search);
+        const view = urlParams.get('view') || 'home';
+        switchView(view, false);
     } else {
-        switchView('login');
+        switchView('login', false);
+    }
+});
+
+// Handle browser back button
+window.addEventListener('popstate', (e) => {
+    if (e.state && e.state.view) {
+        switchView(e.state.view, false);
+    } else {
+        const urlParams = new URLSearchParams(window.location.search);
+        const view = urlParams.get('view') || 'home';
+        switchView(view, false);
     }
 });
 
@@ -956,6 +981,7 @@ runGroupingBtn.addEventListener('click', async () => {
     }
 });
 
+<<<<<<< Updated upstream
 // Helper for UI error messages in Ratio tool (re-defining since showErrors is gone)
 function showRatioErrors(errors) {
     errorLog.classList.remove('hidden');
@@ -966,4 +992,195 @@ function showRatioErrors(errors) {
         li.textContent = err;
         errorList.appendChild(li);
     });
+=======
+// --- COMMON POLLING ---
+function startPolling(taskId, type) {
+    const textEl = type === 'ratio' ? progressText : (type === 'pvid' ? pvidProgressText : document.getElementById('gdrive-progress-text'));
+    const fillEl = type === 'ratio' ? progressFill : (type === 'pvid' ? pvidProgressFill : document.getElementById('gdrive-progress-fill'));
+    const percentEl = type === 'ratio' ? progressPercent : (type === 'pvid' ? pvidProgressPercent : document.getElementById('gdrive-progress-percent'));
+    const downloadSec = type === 'ratio' ? downloadSection : (type === 'pvid' ? pvidDownloadSection : null);
+    const downloadA = type === 'ratio' ? downloadBtn : (type === 'pvid' ? pvidDownloadBtn : null);
+    const btn = type === 'ratio' ? processBtn : (type === 'pvid' ? runGroupingBtn : document.getElementById('scan-gdrive-btn'));
+
+    textEl.textContent = 'Processing...';
+
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`/status/${taskId}`);
+            const data = await response.json();
+
+            const percent = data.progress || 0;
+            fillEl.style.width = `${percent}%`;
+            percentEl.textContent = `${percent}%`;
+
+            if (data.status === 'completed' || data.status === 'failed') {
+                clearInterval(interval);
+                btn.disabled = false;
+
+                if (data.status === 'completed') {
+                    textEl.textContent = 'Completed!';
+                    if (data.zip_url && downloadSec) {
+                        downloadSec.classList.remove('hidden');
+                        downloadA.href = data.zip_url;
+                    }
+                    if (type === 'gdrive') {
+                        gdriveResultsContainer.classList.remove('hidden');
+                        const existingAlert = gdriveResultsContainer.querySelector('.alert-success');
+                        if (existingAlert) existingAlert.remove();
+                        gdriveResultsContainer.insertAdjacentHTML('afterbegin', `<div class="alert alert-success mt-1rem" style="margin-bottom: 1rem;">Scan completed successfully. Found ${data.results?.length || 0} product items. Click 'Download CSV' to export.</div>`);
+                        gdriveDownloadCsvBtn.style.display = 'block';
+                        gdriveCurrentResults = data.results || [];
+                        gdriveCurrentTemplate = data.template || "1:1";
+                    }
+                } else {
+                    textEl.textContent = 'Failed';
+                }
+
+                showErrors(data.errors, type);
+            }
+        } catch (error) {
+            console.error('Polling error:', error);
+            clearInterval(interval);
+        }
+    }, 2000);
 }
+
+function showErrors(errors, type) {
+    const logEl = type === 'ratio' ? errorLog : (type === 'pvid' ? pvidErrorLog : document.getElementById('gdrive-error-log'));
+    const listEl = type === 'ratio' ? errorList : (type === 'pvid' ? pvidErrorList : document.getElementById('gdrive-error-list'));
+    const countEl = type === 'ratio' ? errorCount : (type === 'pvid' ? pvidErrorCount : document.getElementById('gdrive-error-count'));
+
+    if (errors && errors.length > 0) {
+        logEl.classList.remove('hidden');
+        countEl.textContent = errors.length;
+        listEl.innerHTML = '';
+        errors.forEach(err => {
+            const li = document.createElement('li');
+            li.textContent = err;
+            listEl.appendChild(li);
+        });
+    }
+>>>>>>> Stashed changes
+}
+
+// --- GDRIVE SCANNER LOGIC ---
+const scanGdriveBtn = document.getElementById('scan-gdrive-btn');
+const gdriveFolderIdInput = document.getElementById('gdrive-folder-id');
+const gdriveStatusContainer = document.getElementById('gdrive-status-container');
+const gdriveProgressFill = document.getElementById('gdrive-progress-fill');
+const gdriveProgressPercent = document.getElementById('gdrive-progress-percent');
+const gdriveProgressText = document.getElementById('gdrive-progress-text');
+const gdriveErrorLog = document.getElementById('gdrive-error-log');
+const gdriveResultsContainer = document.getElementById('gdrive-results-container');
+const gdriveTable = null; // Removed from HTML
+const gdriveDownloadCsvBtn = document.getElementById('gdrive-download-csv-btn');
+
+let gdriveCurrentResults = [];
+let gdriveCurrentTemplate = "1:1";
+
+// Helper to extract folder ID from a full Google Drive URL
+function extractFolderId(input) {
+    if (!input) return null;
+    input = input.trim();
+    
+    // Check if it's already an ID (no slashes typically)
+    if (!input.includes('/')) return input;
+
+    // e.g. https://drive.google.com/drive/folders/1y9r70m2pWTijFtM5EVKi8obwfHkNUc9J
+    const match = input.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+    if (match && match[1]) {
+        return match[1];
+    }
+    
+    // e.g. https://drive.google.com/drive/u/0/folders/1y9r70m2pWTijFtM5EVKi8obwfHkNUc9J
+    return input; // Fallback, let the backend try
+}
+
+scanGdriveBtn.addEventListener('click', async () => {
+    const rawInput = gdriveFolderIdInput.value;
+    const folderId = extractFolderId(rawInput);
+    
+    if (!folderId) {
+        alert("Please enter a Google Drive Folder ID or URL");
+        return;
+    }
+
+    scanGdriveBtn.disabled = true;
+    gdriveStatusContainer.classList.remove('hidden');
+    gdriveErrorLog.classList.add('hidden');
+    gdriveResultsContainer.classList.add('hidden');
+    gdriveProgressFill.style.width = '0%';
+    gdriveProgressPercent.textContent = '0%';
+    gdriveProgressText.textContent = 'Initializing scanner...';
+
+    try {
+        const initRes = await fetch('/gdrive/init', { method: 'POST' });
+        if (!initRes.ok) throw new Error('Failed to initialize scanning task');
+        const { task_id } = await initRes.json();
+
+        const processRes = await fetch(`/gdrive/process?task_id=${task_id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: folderId })
+        });
+        
+        if (!processRes.ok) throw new Error('Failed to start scanning');
+        
+        startPolling(task_id, 'gdrive');
+    } catch (error) {
+        alert('Error: ' + error.message);
+        scanGdriveBtn.disabled = false;
+        gdriveProgressText.textContent = 'Failed';
+    }
+});
+
+function renderGDriveTable(results) {
+    gdriveCurrentResults = results;
+    gdriveResultsContainer.classList.remove('hidden');
+    
+    if (results.length === 0) {
+        alert('No subfolders found or no images in the provided folder.');
+    }
+}
+
+gdriveDownloadCsvBtn.addEventListener('click', () => {
+    if (gdriveCurrentResults.length === 0) return;
+
+    // Expand complex arrays like 'other_images' to strings for CSV, or we can just join them
+    const allCols = Object.keys(gdriveCurrentResults[0]);
+    
+    const csvRows = [];
+    csvRows.push(allCols.join(',')); // headers
+
+    for (const row of gdriveCurrentResults) {
+        const values = allCols.map(col => {
+            let val = row[col];
+            if (val === null || val === undefined) val = '';
+            else if (Array.isArray(val)) val = val.join('; '); // Join array items with semicolon for CSV cell
+            
+            // Escape quotes and wrap in quotes if there's a comma
+            const stringVal = String(val).replace(/"/g, '""');
+            if (stringVal.includes(',') || stringVal.includes('\n') || stringVal.includes('"')) {
+                return `"${stringVal}"`;
+            }
+            return stringVal;
+        });
+        csvRows.push(values.join(','));
+    }
+
+    const csvData = csvRows.join('\n');
+    const blob = new Blob([csvData], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    
+    // Clean filename template info
+    const safeTemplateStr = gdriveCurrentTemplate.replace(':', 'x'); 
+    a.setAttribute('download', `gdrive_scan_${safeTemplateStr}_${new Date().toISOString().split('T')[0]}.csv`);
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+});
