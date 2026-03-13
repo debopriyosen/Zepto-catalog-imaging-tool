@@ -981,7 +981,6 @@ runGroupingBtn.addEventListener('click', async () => {
     }
 });
 
-<<<<<<< Updated upstream
 // Helper for UI error messages in Ratio tool (re-defining since showErrors is gone)
 function showRatioErrors(errors) {
     errorLog.classList.remove('hidden');
@@ -992,7 +991,8 @@ function showRatioErrors(errors) {
         li.textContent = err;
         errorList.appendChild(li);
     });
-=======
+}
+
 // --- COMMON POLLING ---
 function startPolling(taskId, type) {
     const textEl = type === 'ratio' ? progressText : (type === 'pvid' ? pvidProgressText : document.getElementById('gdrive-progress-text'));
@@ -1060,7 +1060,6 @@ function showErrors(errors, type) {
             listEl.appendChild(li);
         });
     }
->>>>>>> Stashed changes
 }
 
 // --- GDRIVE SCANNER LOGIC ---
