@@ -7,10 +7,7 @@ google-auth
 python-jose[cryptography]
 python-multipart
 openpyxl
-<<<<<<< Updated upstream
-=======
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
->>>>>>> Stashed changes
 python-dotenv
